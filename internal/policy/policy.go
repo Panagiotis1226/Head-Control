@@ -15,10 +15,12 @@ package policy
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -92,7 +94,15 @@ type State struct {
 func (m *Manager) Get(ctx context.Context) (*State, error) {
 	p, err := m.hs.GetPolicy(ctx)
 	if err != nil {
-		return nil, err
+		// A fresh database-mode headscale that has never had a policy set
+		// answers GET /api/v1/policy with an error (verified against a live
+		// v0.29.3). Treat that as an empty policy so the editor opens
+		// instead of the whole page erroring.
+		if isNoPolicyYet(err) {
+			p = &hsclient.Policy{Policy: ""}
+		} else {
+			return nil, err
+		}
 	}
 	m.snapshotIfChanged(p.Policy, "external-snapshot", "")
 
@@ -208,6 +218,18 @@ func (m *Manager) Save(ctx context.Context, policyDoc, comment string) (*SaveRes
 type NotWritableError struct{ Reason string }
 
 func (e *NotWritableError) Error() string { return e.Reason }
+
+// isNoPolicyYet detects headscale's "no policy stored yet" GetPolicy failure.
+// There is no dedicated code; match the known message shapes ("acl policy
+// not found", gorm's "record not found", "empty policy").
+func isNoPolicyYet(err error) bool {
+	var he *hsclient.Error
+	if !errors.As(err, &he) {
+		return false
+	}
+	msg := strings.ToLower(he.Message)
+	return strings.Contains(msg, "not found") || strings.Contains(msg, "empty policy")
+}
 
 // writeFileAtomic writes the policy file via tmp + fsync + rename, keeping
 // the previous content in a .bak beside it. Temp files are created in the

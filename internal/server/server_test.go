@@ -237,6 +237,29 @@ func TestPolicyDatabaseModeSave(t *testing.T) {
 	}
 }
 
+// A fresh database-mode headscale that never had a policy set errors on
+// GET /api/v1/policy; the UI must see an empty editable policy instead.
+func TestPolicyEmptyDatabaseIsEditable(t *testing.T) {
+	env := newTestEnv(t, nil)
+	env.fake.Mu.Lock()
+	env.fake.Policy = ""
+	env.fake.Mu.Unlock()
+	env.login()
+
+	resp := env.do("GET", "/api/policy", nil, false)
+	if resp.StatusCode != 200 {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 200 for never-set policy, got %d: %s", resp.StatusCode, body)
+	}
+	state := decode[struct {
+		Policy   string `json:"policy"`
+		Writable bool   `json:"writable"`
+	}](t, resp)
+	if state.Policy != "" || !state.Writable {
+		t.Fatalf("expected empty writable policy, got %+v", state)
+	}
+}
+
 func TestPolicyFileModeFallback(t *testing.T) {
 	dir := t.TempDir()
 	policyPath := filepath.Join(dir, "policy.hujson")

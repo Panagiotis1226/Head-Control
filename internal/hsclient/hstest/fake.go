@@ -528,6 +528,12 @@ func (f *Fake) handle(w http.ResponseWriter, r *http.Request) {
 
 	// ---- policy ----
 	case path == "/api/v1/policy" && method == "GET":
+		// Real v0.29.3 quirk: a database-mode server that never had a policy
+		// set errors on GET instead of returning an empty document.
+		if f.PolicyMode == "database" && f.Policy == "" {
+			writeStatus(w, http.StatusInternalServerError, hsclient.CodeInternal, "acl policy not found: record not found")
+			return
+		}
 		resp := map[string]any{"policy": f.Policy}
 		if f.PolicyMode == "database" && f.PolicyAt != nil {
 			resp["updatedAt"] = f.PolicyAt.Format(time.RFC3339)
