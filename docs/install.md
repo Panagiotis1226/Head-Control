@@ -14,7 +14,7 @@ headscale apikeys create --expiration 90d
 Then, anywhere that can reach headscale:
 
 ```bash
-curl -LO https://raw.githubusercontent.com/panagiotis1226/claude-head/main/deploy/docker-compose.yaml
+curl -LO https://raw.githubusercontent.com/panagiotis1226/head-control/main/deploy/docker-compose.yaml
 # hash your admin password:
 docker run --rm -i ghcr.io/panagiotis1226/head-control:latest hash-password
 # create a .env next to the compose file — SINGLE-QUOTE the hash (see note below):
