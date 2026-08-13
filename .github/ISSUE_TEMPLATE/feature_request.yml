@@ -1,0 +1,28 @@
+name: Feature request
+description: Suggest an improvement or new capability
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        One thing worth checking first: the README's [feature parity table](../../#feature-parity-vs-the-tailscale-admin-console)
+        marks several things as impossible because **headscale has no server-side support** for
+        them (webhooks, user roles, tailnet lock, client telemetry, …). Those need to be built in
+        headscale before any UI can offer them.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: Describe the situation where you miss this feature, rather than only the feature itself.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would you like to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Workarounds or alternatives you've considered
