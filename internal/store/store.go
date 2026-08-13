@@ -8,6 +8,7 @@ package store
 import (
 	"database/sql"
 	"fmt"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -77,6 +78,20 @@ CREATE TABLE IF NOT EXISTS kv (
 
 // Open opens (creating if needed) the database in dataDir.
 func Open(dataDir string) (*Store, error) {
+	// SQLite reports permission problems only on first write, as the opaque
+	// "unable to open database file (14)". Probe writability up front so a
+	// root-owned /data volume produces an actionable error instead.
+	if probe, err := os.CreateTemp(dataDir, ".probe-*"); err != nil {
+		return nil, fmt.Errorf(
+			"the data directory %s is not writable by this process (uid %d): %v — "+
+				"if it is a Docker volume created by an older image, fix its ownership once with: "+
+				"docker run --rm -v <volume-name>:/data alpine chown 65532:65532 /data",
+			dataDir, os.Getuid(), err)
+	} else {
+		probe.Close()
+		os.Remove(probe.Name())
+	}
+
 	path := filepath.Join(dataDir, "headcontrol.db")
 	db, err := sql.Open("sqlite", path+"?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(ON)")
 	if err != nil {
