@@ -178,6 +178,11 @@ weigh the AI co-authorship in your own trust assessment, as with any dependency.
 `Co-Authored-By` trailers marking the AI's involvement. Bug reports are very welcome; they get
 fixed the same way the code was written.
 
+## Support
+
+If Head-Control is useful to you, you can support its development on
+[Ko-fi](https://ko-fi.com/panagiotis1226) ☕ — appreciated, never required.
+
 ## License
 
 [MIT with Commons Clause](LICENSE) — free for anyone to use, modify, and self-host, personally or
