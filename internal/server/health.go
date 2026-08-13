@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/panagiotis1226/claude-head/internal/config"
-	"github.com/panagiotis1226/claude-head/internal/hsclient"
+	"github.com/panagiotis1226/head-control/internal/config"
+	"github.com/panagiotis1226/head-control/internal/hsclient"
 )
 
 // HeadscaleStatus is the cached result of background health probing,

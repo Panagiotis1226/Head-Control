@@ -24,8 +24,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/panagiotis1226/claude-head/internal/hsclient"
-	"github.com/panagiotis1226/claude-head/internal/store"
+	"github.com/panagiotis1226/head-control/internal/hsclient"
+	"github.com/panagiotis1226/head-control/internal/store"
 )
 
 // Mode of policy management, as currently known.

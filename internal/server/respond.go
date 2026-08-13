@@ -5,9 +5,9 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/panagiotis1226/claude-head/internal/dnsrecords"
-	"github.com/panagiotis1226/claude-head/internal/hsclient"
-	"github.com/panagiotis1226/claude-head/internal/policy"
+	"github.com/panagiotis1226/head-control/internal/dnsrecords"
+	"github.com/panagiotis1226/head-control/internal/hsclient"
+	"github.com/panagiotis1226/head-control/internal/policy"
 )
 
 // apiError is the single error envelope the SPA consumes.

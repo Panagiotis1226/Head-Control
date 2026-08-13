@@ -12,14 +12,14 @@ import (
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
 
-	"github.com/panagiotis1226/claude-head/internal/auth"
-	"github.com/panagiotis1226/claude-head/internal/config"
-	"github.com/panagiotis1226/claude-head/internal/dnsrecords"
-	"github.com/panagiotis1226/claude-head/internal/dockerint"
-	"github.com/panagiotis1226/claude-head/internal/hsclient"
-	"github.com/panagiotis1226/claude-head/internal/policy"
-	"github.com/panagiotis1226/claude-head/internal/store"
-	"github.com/panagiotis1226/claude-head/internal/webui"
+	"github.com/panagiotis1226/head-control/internal/auth"
+	"github.com/panagiotis1226/head-control/internal/config"
+	"github.com/panagiotis1226/head-control/internal/dnsrecords"
+	"github.com/panagiotis1226/head-control/internal/dockerint"
+	"github.com/panagiotis1226/head-control/internal/hsclient"
+	"github.com/panagiotis1226/head-control/internal/policy"
+	"github.com/panagiotis1226/head-control/internal/store"
+	"github.com/panagiotis1226/head-control/internal/webui"
 )
 
 // Version is stamped at build time via -ldflags.

@@ -7,8 +7,8 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/panagiotis1226/claude-head/internal/dnsrecords"
-	"github.com/panagiotis1226/claude-head/internal/store"
+	"github.com/panagiotis1226/head-control/internal/dnsrecords"
+	"github.com/panagiotis1226/head-control/internal/store"
 )
 
 // dnsConfigView is the read-only display of headscale's dns config block,

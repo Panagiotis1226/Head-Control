@@ -17,7 +17,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/panagiotis1226/claude-head/internal/store"
+	"github.com/panagiotis1226/head-control/internal/store"
 )
 
 // Record is one extra DNS record ({name, type, value}).

@@ -1,4 +1,4 @@
-module github.com/panagiotis1226/claude-head
+module github.com/panagiotis1226/head-control
 
 go 1.25.0
 

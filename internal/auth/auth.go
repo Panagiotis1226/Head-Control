@@ -11,7 +11,7 @@ import (
 
 	"golang.org/x/crypto/bcrypt"
 
-	"github.com/panagiotis1226/claude-head/internal/store"
+	"github.com/panagiotis1226/head-control/internal/store"
 )
 
 // CookieName variants: the __Host- prefix enforces Secure+Path=/ semantics

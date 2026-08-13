@@ -5,9 +5,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/panagiotis1226/claude-head/internal/dockerint"
-	"github.com/panagiotis1226/claude-head/internal/hsclient"
-	"github.com/panagiotis1226/claude-head/internal/store"
+	"github.com/panagiotis1226/head-control/internal/dockerint"
+	"github.com/panagiotis1226/head-control/internal/hsclient"
+	"github.com/panagiotis1226/head-control/internal/store"
 )
 
 // handleMeta reports server status + capabilities; the SPA polls it for the
