@@ -105,6 +105,16 @@ docker build -t head-control:dev .
 The repository pins headscale's v0.29.3 OpenAPI spec at `testdata/headscale-v0.29.3.swagger.json`;
 a contract test fails if the client and spec ever drift.
 
+## AI disclosure
+
+This is a vibe-coded project: the codebase was co-authored with **Claude** (Anthropic's AI),
+which wrote the bulk of the implementation under human direction, with human edits, review, and
+real-world testing on top. The design was researched against the headscale v0.29.3 source and
+the behavior verified end-to-end against a live headscale server before release — but you should
+weigh the AI co-authorship in your own trust assessment, as with any dependency. Commits carry
+`Co-Authored-By` trailers marking the AI's involvement. Bug reports are very welcome; they get
+fixed the same way the code was written.
+
 ## License
 
 [MIT with Commons Clause](LICENSE) — free for anyone to use, modify, and self-host, personally or
