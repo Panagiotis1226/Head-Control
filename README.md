@@ -107,4 +107,7 @@ a contract test fails if the client and spec ever drift.
 
 ## License
 
-[MIT](LICENSE)
+[MIT with Commons Clause](LICENSE) — free for anyone to use, modify, and self-host, personally or
+inside a company. What the Commons Clause removes is the right to **sell** Head-Control: no selling
+the software itself, and no paid hosting/consulting/support offerings whose value derives
+substantially from it.
