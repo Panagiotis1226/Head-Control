@@ -88,11 +88,11 @@ func New(baseURL, apiKey string, opts ...Option) (*Client, error) {
 func (c *Client) BaseURL() string { return c.base.String() }
 
 // APIKeyPrefix returns the prefix segment of the configured API key
-// (hskey-api-{prefix}-{secret}), or "" if the key has another format.
-// Used to mark "the key this UI uses" in API-key listings without ever
-// exposing the secret.
+// (hskey-api-{prefix}-{secret}; the secret itself may contain hyphens),
+// or "" if the key has another format. Used to mark "the key this UI uses"
+// in API-key listings without ever exposing the secret.
 func (c *Client) APIKeyPrefix() string {
-	parts := strings.Split(c.apiKey, "-")
+	parts := strings.SplitN(c.apiKey, "-", 4)
 	if len(parts) == 4 && parts[0] == "hskey" && parts[1] == "api" {
 		return parts[2]
 	}

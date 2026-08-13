@@ -116,6 +116,8 @@ func TestContractFieldEncoding(t *testing.T) {
 func TestAPIKeyPrefix(t *testing.T) {
 	for _, tc := range []struct{ key, want string }{
 		{"hskey-api-abc123-supersecret", "abc123"},
+		// Real v0.29.3 secrets contain hyphens.
+		{"hskey-api-Gbt557qdConN-dFnbCoodBtx2iz5-qftV9twhIZichV2dhXUnR", "Gbt557qdConN"},
 		{"oldprefix.oldsecret", "oldprefix"},
 		{"garbage", ""},
 	} {

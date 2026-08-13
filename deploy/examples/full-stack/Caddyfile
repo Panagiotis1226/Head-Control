@@ -1,0 +1,6 @@
+# Same-origin path split: /admin -> Head-Control, everything else -> headscale.
+# Caddy handles headscale's non-standard WebSocket upgrade automatically.
+headscale.example.com {
+	reverse_proxy /admin* head-control:8000
+	reverse_proxy headscale:8080
+}

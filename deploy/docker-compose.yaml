@@ -1,0 +1,42 @@
+# Head-Control — the entire install. Point it at your existing headscale.
+#
+#   1. Create an API key on your headscale host:  headscale apikeys create
+#   2. (Recommended) hash your admin password:
+#        docker run --rm -i ghcr.io/panagiotis1226/head-control:latest hash-password
+#   3. Fill the environment below (or use a .env file) and:  docker compose up -d
+#
+# Put a TLS-terminating reverse proxy (Caddy, Traefik, nginx) in front for
+# production use. More deployment variants: deploy/examples/ in the repo.
+
+services:
+  head-control:
+    image: ghcr.io/panagiotis1226/head-control:latest # pin a version in production, e.g. :1.0.0
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      # -- required --
+      HEADSCALE_URL: https://headscale.example.com # how THIS container reaches headscale
+      HEADSCALE_API_KEY: ${HEADSCALE_API_KEY:?create one with `headscale apikeys create`}
+      # Use ADMIN_PASSWORD_HASH (bcrypt, recommended) or ADMIN_PASSWORD (plain).
+      ADMIN_PASSWORD_HASH: ${ADMIN_PASSWORD_HASH:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+
+      # -- common options --
+      # PUBLIC_SERVER_URL: https://headscale.example.com  # URL shown in copyable `tailscale up` commands
+      # BASE_PATH: /admin              # serve the UI under a sub-path
+      # COOKIE_SECURE: "false"         # only for plain-HTTP LAN use
+
+      # -- optional integrations (see deploy/examples/) --
+      # POLICY_FILE_PATH: /etc/headscale/policy.hujson   # ACL editing when headscale uses policy.mode: file
+      # EXTRA_RECORDS_PATH: /etc/headscale/extra-records.json  # editable DNS records (hot-reloaded)
+      # HEADSCALE_CONFIG_PATH: /etc/headscale/config.yaml      # read-only config display (DNS page)
+      # DOCKER_SOCK: unix:///var/run/docker.sock                # SIGHUP reload for file-mode ACL saves
+    volumes:
+      - head-control-data:/data
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  head-control-data:

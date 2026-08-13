@@ -1,0 +1,48 @@
+# Full-stack example: headscale v0.29.3 + Head-Control + Caddy on ONE origin.
+# Caddy serves headscale at / and the UI at /admin — same-origin, zero CORS,
+# automatic HTTPS. Replace example.com and the email below.
+#
+# Headscale runs with policy.mode: database so ACL editing works over the API
+# with no file mounts (see ../file-mode/ for the file-mode variant).
+
+services:
+  headscale:
+    image: headscale/headscale:v0.29.3
+    restart: unless-stopped
+    command: serve
+    volumes:
+      - ./headscale-config:/etc/headscale # put config.yaml here (see README.md)
+      - headscale-data:/var/lib/headscale
+
+  head-control:
+    image: ghcr.io/panagiotis1226/head-control:latest
+    restart: unless-stopped
+    environment:
+      HEADSCALE_URL: http://headscale:8080
+      PUBLIC_SERVER_URL: https://headscale.example.com
+      HEADSCALE_API_KEY: ${HEADSCALE_API_KEY:?run `docker compose exec headscale headscale apikeys create` first}
+      ADMIN_PASSWORD_HASH: ${ADMIN_PASSWORD_HASH:?generate with `docker run --rm -i ghcr.io/panagiotis1226/head-control:latest hash-password`}
+      BASE_PATH: /admin
+    volumes:
+      - head-control-data:/data
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  headscale-data:
+  head-control-data:
+  caddy-data:
+  caddy-config:

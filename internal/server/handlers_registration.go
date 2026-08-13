@@ -9,8 +9,10 @@ import (
 )
 
 // authIDRe extracts an auth/registration key from a raw ID or a pasted
-// registration URL (…/register/hskey-reg-… or an hskey-auth-… SSH check id).
-var authIDRe = regexp.MustCompile(`hskey-(?:reg|auth)-[0-9A-Za-z]+`)
+// registration URL. Real headscale v0.29.3 registration auth IDs use the
+// prefix "hskey-authreq-" (verified against a live server); older/other
+// variants are matched permissively. IDs may contain hyphens, like API keys.
+var authIDRe = regexp.MustCompile(`hskey-[A-Za-z]+-[0-9A-Za-z-]+`)
 
 func extractAuthID(input string) string {
 	if m := authIDRe.FindString(input); m != "" {

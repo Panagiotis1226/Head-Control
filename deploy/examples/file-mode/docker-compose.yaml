@@ -1,0 +1,64 @@
+# File-mode example: headscale keeps policy.mode: file, and Head-Control
+# edits the policy through a SHARED VOLUME + reloads headscale with SIGHUP
+# through a scoped docker-socket-proxy (never the raw socket).
+#
+# Also demonstrates the editable DNS extra-records file (hot-reloaded by
+# headscale, no signal needed) and the read-only config mount.
+
+services:
+  headscale:
+    image: headscale/headscale:v0.29.3
+    restart: unless-stopped
+    command: serve
+    labels:
+      - me.headcontrol.target=headscale # how Head-Control finds this container
+    volumes:
+      - ./headscale-config:/etc/headscale
+      - headscale-data:/var/lib/headscale
+    # headscale's config.yaml must contain:
+    #   policy: { mode: file, path: /etc/headscale/policy.hujson }
+    #   dns:    { extra_records_path: /etc/headscale/extra-records.json, ... }
+
+  head-control:
+    image: ghcr.io/panagiotis1226/head-control:latest
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      HEADSCALE_URL: http://headscale:8080
+      HEADSCALE_API_KEY: ${HEADSCALE_API_KEY:?}
+      ADMIN_PASSWORD_HASH: ${ADMIN_PASSWORD_HASH:?}
+      POLICY_MODE: file
+      POLICY_FILE_PATH: /etc/headscale/policy.hujson
+      EXTRA_RECORDS_PATH: /etc/headscale/extra-records.json
+      HEADSCALE_CONFIG_PATH: /etc/headscale/config.yaml
+      DOCKER_SOCK: unix:///var/run/docker.sock # points at the proxy's socket (mounted below)
+    volumes:
+      - ./headscale-config:/etc/headscale # SHARED with headscale (policy + records writable)
+      - head-control-data:/data
+      - docker-proxy-sock:/var/run # socket provided by docker-socket-proxy
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - docker-socket-proxy
+
+  # Exposes ONLY what Head-Control needs (list containers + send signals);
+  # everything else on the Docker API stays blocked.
+  docker-socket-proxy:
+    image: lscr.io/linuxserver/socket-proxy:latest
+    restart: unless-stopped
+    environment:
+      CONTAINERS: 1 # GET /containers/json
+      POST: 1      # POST /containers/{id}/kill
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - docker-proxy-sock:/var/run
+    read_only: true
+    tmpfs:
+      - /run
+
+volumes:
+  headscale-data:
+  head-control-data:
+  docker-proxy-sock:
