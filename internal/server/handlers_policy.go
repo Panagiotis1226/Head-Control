@@ -6,7 +6,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/panagiotis1226/claude-head/internal/store"
+	"github.com/panagiotis1226/head-control/internal/store"
 )
 
 func (s *Server) handleGetPolicy(w http.ResponseWriter, r *http.Request) {

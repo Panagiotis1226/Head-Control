@@ -14,6 +14,8 @@ All notable changes to Head-Control are documented here. The format follows
 ### Changed
 - Repository renamed from `claude-head` to **`head-control`**; documentation URLs updated.
   Old links redirect.
+- Go module path renamed to `github.com/panagiotis1226/head-control` to match (no public API —
+  nothing imports this module).
 
 ## [0.1.1] — 2026-08-13
 

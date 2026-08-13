@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/panagiotis1226/claude-head/internal/hsclient"
-	"github.com/panagiotis1226/claude-head/internal/hsclient/hstest"
+	"github.com/panagiotis1226/head-control/internal/hsclient"
+	"github.com/panagiotis1226/head-control/internal/hsclient/hstest"
 )
 
 func newClientAndFake(t *testing.T) (*hsclient.Client, *hstest.Fake) {

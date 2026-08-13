@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/panagiotis1226/claude-head/internal/store"
+	"github.com/panagiotis1226/head-control/internal/store"
 )
 
 func (s *Server) handleListAudit(w http.ResponseWriter, r *http.Request) {

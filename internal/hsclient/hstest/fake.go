@@ -17,7 +17,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/panagiotis1226/claude-head/internal/hsclient"
+	"github.com/panagiotis1226/head-control/internal/hsclient"
 )
 
 // Fake is an in-memory headscale. Create with New, point an hsclient.Client

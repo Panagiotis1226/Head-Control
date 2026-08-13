@@ -19,11 +19,11 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/panagiotis1226/claude-head/internal/auth"
-	"github.com/panagiotis1226/claude-head/internal/config"
-	"github.com/panagiotis1226/claude-head/internal/hsclient"
-	"github.com/panagiotis1226/claude-head/internal/server"
-	"github.com/panagiotis1226/claude-head/internal/store"
+	"github.com/panagiotis1226/head-control/internal/auth"
+	"github.com/panagiotis1226/head-control/internal/config"
+	"github.com/panagiotis1226/head-control/internal/hsclient"
+	"github.com/panagiotis1226/head-control/internal/server"
+	"github.com/panagiotis1226/head-control/internal/store"
 )
 
 var version = "dev" // stamped via -ldflags "-X main.version=..."

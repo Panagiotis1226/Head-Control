@@ -22,7 +22,7 @@ ARG TARGETARCH
 ARG VERSION=dev
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
     go build -trimpath \
-      -ldflags="-s -w -X main.version=$VERSION -X github.com/panagiotis1226/claude-head/internal/server.Version=$VERSION" \
+      -ldflags="-s -w -X main.version=$VERSION -X github.com/panagiotis1226/head-control/internal/server.Version=$VERSION" \
       -o /head-control ./cmd/head-control
 # Seed for /data in the final image: distroless has no shell, so the
 # directory must be COPY'd in with the right ownership. Without this, fresh

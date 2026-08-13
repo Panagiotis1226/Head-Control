@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"regexp"
 
-	"github.com/panagiotis1226/claude-head/internal/store"
+	"github.com/panagiotis1226/head-control/internal/store"
 )
 
 // authIDRe extracts an auth/registration key from a raw ID or a pasted

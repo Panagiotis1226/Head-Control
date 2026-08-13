@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/panagiotis1226/claude-head/internal/store"
+	"github.com/panagiotis1226/head-control/internal/store"
 )
 
 type ctxKey int
