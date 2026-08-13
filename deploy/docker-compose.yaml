@@ -5,6 +5,11 @@
 #        docker run --rm -i ghcr.io/panagiotis1226/head-control:latest hash-password
 #   3. Fill the environment below (or use a .env file) and:  docker compose up -d
 #
+# IMPORTANT — bcrypt hashes contain "$", which Docker Compose interpolates:
+#   in a .env file, single-quote the value:   ADMIN_PASSWORD_HASH='$2b$10$...'
+#   inlined in this file, double every "$":   ADMIN_PASSWORD_HASH: $$2b$$10$$...
+# Head-Control refuses to start on a truncated hash so this fails loudly.
+#
 # Put a TLS-terminating reverse proxy (Caddy, Traefik, nginx) in front for
 # production use. More deployment variants: deploy/examples/ in the repo.
 

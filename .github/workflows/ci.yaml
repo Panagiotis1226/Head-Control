@@ -96,7 +96,12 @@ jobs:
           done
           APIKEY=$(docker exec headscale headscale apikeys create | tail -1)
 
+          # A fresh named volume at /data is deliberate: it regression-tests
+          # that the image seeds /data with nonroot ownership (a root-owned
+          # volume broke v0.1.0 with "unable to open database file").
+          docker volume create hc-data
           docker run -d --name head-control --network hcnet -p 8000:8000 \
+            -v hc-data:/data \
             -e HEADSCALE_URL=http://headscale:8080 \
             -e HEADSCALE_API_KEY="$APIKEY" \
             -e ADMIN_PASSWORD=ci-test-password \

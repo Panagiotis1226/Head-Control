@@ -7,6 +7,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -91,8 +92,10 @@ func FromEnv() (*Config, error) {
 	if c.AdminPassword == "" && c.AdminPasswordHash == "" {
 		return nil, fmt.Errorf("ADMIN_PASSWORD or ADMIN_PASSWORD_HASH is required (generate a hash with the hash-password subcommand)")
 	}
-	if c.AdminPasswordHash != "" && !strings.HasPrefix(c.AdminPasswordHash, "$2") {
-		return nil, fmt.Errorf("ADMIN_PASSWORD_HASH does not look like a bcrypt hash")
+	if c.AdminPasswordHash != "" {
+		if err := validateBcryptHash(c.AdminPasswordHash); err != nil {
+			return nil, err
+		}
 	}
 
 	switch c.PolicyMode {
@@ -177,6 +180,26 @@ func envFileOnly(fileKey string) (string, error) {
 		return "", fmt.Errorf("reading %s (%s): %w", fileKey, path, err)
 	}
 	return strings.TrimSpace(string(buf)), nil
+}
+
+// bcryptHashRe matches a complete bcrypt hash: $2<variant>$<cost>$<22-char
+// salt + 31-char digest>. Docker Compose interpolates "$" inside .env files
+// and inline compose values, which silently truncates hashes to something
+// like "$2b$10$" — catching that here beats every login mysteriously failing.
+var bcryptHashRe = regexp.MustCompile(`^\$2[abxy]?\$\d{2}\$[./A-Za-z0-9]{53}$`)
+
+func validateBcryptHash(hash string) error {
+	if bcryptHashRe.MatchString(hash) {
+		return nil
+	}
+	if strings.HasPrefix(hash, "$2") {
+		return fmt.Errorf(
+			"ADMIN_PASSWORD_HASH looks like a truncated bcrypt hash (%d chars, expected 59-60). "+
+				"Docker Compose interpolates '$' in .env files and compose values — wrap the hash in "+
+				"single quotes in .env (ADMIN_PASSWORD_HASH='$2b$10$...') or double every '$' when "+
+				"inlining it in docker-compose.yaml ($$2b$$10$$...)", len(hash))
+	}
+	return fmt.Errorf("ADMIN_PASSWORD_HASH is not a bcrypt hash — generate one with the hash-password subcommand")
 }
 
 func normalizeBasePath(p string) (string, error) {

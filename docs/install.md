@@ -17,10 +17,10 @@ Then, anywhere that can reach headscale:
 curl -LO https://raw.githubusercontent.com/panagiotis1226/claude-head/main/deploy/docker-compose.yaml
 # hash your admin password:
 docker run --rm -i ghcr.io/panagiotis1226/head-control:latest hash-password
-# create a .env next to the compose file:
+# create a .env next to the compose file — SINGLE-QUOTE the hash (see note below):
 cat > .env <<'EOF'
 HEADSCALE_API_KEY=<the key from apikeys create>
-ADMIN_PASSWORD_HASH=<the bcrypt hash>
+ADMIN_PASSWORD_HASH='<the bcrypt hash, kept inside single quotes>'
 EOF
 # edit HEADSCALE_URL in docker-compose.yaml, then:
 docker compose up -d
@@ -28,8 +28,12 @@ docker compose up -d
 
 Open `http://host:8000` and log in.
 
-> **Note on `$` in bcrypt hashes:** in a `.env` file the hash needs no escaping. If you inline it
-> in `docker-compose.yaml` instead, double every `$` (`$$2a$$10$$…`) — compose interpolates `$`.
+> **Note on `$` in bcrypt hashes:** Docker Compose v2 interpolates `$` **even inside `.env`
+> files**, which silently truncates a hash like `$2b$10$…` (you'll see a
+> `WARN The "…" variable is not set` at startup). Always single-quote the value in `.env`
+> (`ADMIN_PASSWORD_HASH='$2b$10$…'`); if you inline it in `docker-compose.yaml` instead, double
+> every `$` (`$$2b$$10$$…`). Head-Control refuses to start on a truncated hash and tells you
+> exactly this, so a mistake here fails loudly instead of breaking logins.
 
 ## 2. Behind a reverse proxy (production)
 
@@ -70,8 +74,11 @@ always points at the newest release compatible with headscale 0.29.x.
 
 - **"headscale rejected this server's API key"** — the key expired or was deleted. Create a new one
   (`headscale apikeys create`), update `HEADSCALE_API_KEY`, restart the container.
-- **Login always fails** — if you inlined `ADMIN_PASSWORD_HASH` in compose YAML, check the `$$`
-  escaping (see above).
+- **"ADMIN_PASSWORD_HASH looks like a truncated bcrypt hash"** (or login always fails) — compose
+  `$`-interpolation ate part of the hash; single-quote it in `.env` or use `$$` inline (see above).
+- **"the data directory /data is not writable"** — the volume was created root-owned by an image
+  older than v0.1.1. Fix once: `docker run --rm -v <volume-name>:/data alpine chown 65532:65532 /data`
+  (find the volume name with `docker volume ls`), then `docker compose up -d --force-recreate`.
 - **UI unreachable behind proxy at a sub-path** — set `BASE_PATH` to the same path the proxy strips
   or forwards (Head-Control expects the prefix to still be present, e.g. `/admin/api/...`).
 - **Plain-HTTP LAN use** — set `COOKIE_SECURE=false` or the session cookie will be dropped.

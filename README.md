@@ -43,7 +43,7 @@ front for production (`BASE_PATH=/admin` lets it share your headscale domain —
 |---|---|---|---|
 | `HEADSCALE_URL` | ✔ | — | How this container reaches headscale (e.g. `http://headscale:8080`) |
 | `HEADSCALE_API_KEY` (or `_FILE`) | ✔ | — | From `headscale apikeys create` |
-| `ADMIN_PASSWORD_HASH` or `ADMIN_PASSWORD` (or `ADMIN_PASSWORD_FILE`) | ✔ | — | UI login; bcrypt hash preferred (`hash-password` subcommand) |
+| `ADMIN_PASSWORD_HASH` or `ADMIN_PASSWORD` (or `ADMIN_PASSWORD_FILE`) | ✔ | — | UI login; bcrypt hash preferred (`hash-password` subcommand). **Single-quote the hash in `.env`** (`'$2b$10$…'`) — compose interpolates `$` |
 | `PUBLIC_SERVER_URL` | | `HEADSCALE_URL` | Client-facing URL used in copyable `tailscale up` commands |
 | `LISTEN_ADDR` | | `:8000` | Bind address |
 | `BASE_PATH` | | `/` | Serve under a sub-path (e.g. `/admin`) — runtime, no rebuild |
