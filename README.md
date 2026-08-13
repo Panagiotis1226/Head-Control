@@ -29,13 +29,76 @@ headscale apikeys create
 docker run --rm -i ghcr.io/panagiotis1226/head-control:latest hash-password
 
 # 3. Grab the compose file, fill in the environment, and start:
-curl -LO https://raw.githubusercontent.com/panagiotis1226/claude-head/main/deploy/docker-compose.yaml
+curl -LO https://raw.githubusercontent.com/panagiotis1226/head-control/main/deploy/docker-compose.yaml
 docker compose up -d
 ```
 
 Open `http://your-host:8000`, log in with your admin password, done. Put a TLS reverse proxy in
 front for production (`BASE_PATH=/admin` lets it share your headscale domain — see
 `deploy/examples/full-stack/` for a complete headscale + Head-Control + Caddy stack).
+
+### Step-by-step: fresh VPS, ~5 minutes
+
+New to Docker or self-hosting? Here is every command, spelled out. You need a VPS that can reach
+your headscale server (v0.29.x). *No headscale yet either?* Skip this and use
+[`deploy/examples/full-stack/`](deploy/examples/full-stack/) instead — one compose file that runs
+headscale + Head-Control + automatic HTTPS together.
+
+**1. Install Docker** (skip if you have it):
+
+```bash
+curl -fsSL https://get.docker.com | sh
+```
+
+**2. Create a headscale API key.** Run this where headscale runs:
+
+```bash
+headscale apikeys create --expiration 90d
+# if headscale runs in Docker:
+#   docker exec <headscale-container> headscale apikeys create --expiration 90d
+```
+
+Copy the key it prints — it is shown only once.
+
+**3. Download the compose file** into a fresh directory on your VPS:
+
+```bash
+mkdir head-control && cd head-control
+curl -LO https://raw.githubusercontent.com/panagiotis1226/head-control/main/deploy/docker-compose.yaml
+```
+
+**4. Hash the password** you'll use to log in to the UI (type it when prompted):
+
+```bash
+docker run --rm -i ghcr.io/panagiotis1226/head-control:latest hash-password
+```
+
+**5. Create a `.env` file** next to the compose file with the key from step 2 and the hash from
+step 4 — **keep the single quotes around the hash**, they are load-bearing:
+
+```bash
+cat > .env <<'EOF'
+HEADSCALE_API_KEY=paste-your-api-key-here
+ADMIN_PASSWORD_HASH='$2b$10$paste-your-hash-here'
+EOF
+```
+
+**6. Point it at your headscale.** Open `docker-compose.yaml` and set `HEADSCALE_URL` to wherever
+your headscale lives (e.g. `https://headscale.example.com`). If you'll open the UI over plain
+HTTP for now (no TLS yet), also un-comment `COOKIE_SECURE: "false"` — otherwise the login cookie
+is HTTPS-only and sign-in won't stick.
+
+**7. Start it:**
+
+```bash
+docker compose up -d
+```
+
+**8. Log in.** Open `http://<your-vps-ip>:8000`, enter the password from step 4. Done.
+
+For anything internet-facing, put TLS in front (Caddy makes this a 3-line config) and remove the
+`COOKIE_SECURE` override. If something misbehaves, `docker compose logs head-control` says why —
+misconfiguration fails loudly with an explanation, not silently.
 
 ## Configuration (environment variables)
 
