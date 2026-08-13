@@ -20,6 +20,8 @@ Tailscale control-plane experience, for your own coordination server.
 - **Honest about limits.** Where headscale has no server-side support (webhooks, user roles,
   tailnet lock, …), the UI says so instead of pretending.
 
+![Head-Control dashboard — fleet overview with health warnings for offline subnet routers](docs/screenshots/dashboard.png)
+
 > **Compatibility:** Head-Control 1.x targets **headscale v0.29.0 – v0.29.3** (tested against
 > v0.29.3). Headscale 0.26–0.28 are unsupported (different node/key APIs). Headscale 0.30 changes
 > the API fundamentally (gRPC removal, new error format) and will need the next Head-Control major.
@@ -139,6 +141,8 @@ misconfiguration fails loudly with an explanation, not silently.
 
 Every save — and any change made outside the UI — is snapshotted into a local version history with
 diff and rollback. Rollback loads a version into the editor; nothing applies without validation.
+
+![ACL editor in database mode with version history and headscale 0.29 policy hints](docs/screenshots/acl-editor.png)
 
 ## Feature parity vs. the Tailscale admin console
 

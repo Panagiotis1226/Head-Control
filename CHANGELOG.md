@@ -10,6 +10,7 @@ All notable changes to Head-Control are documented here. The format follows
 - Step-by-step VPS quick-start walkthrough in the README.
 - Ko-fi funding link (`FUNDING.yml` + README Support section).
 - Community files: security policy, issue templates, this changelog, README badges.
+- UI screenshots (dashboard, ACL editor) in the README.
 
 ### Changed
 - Repository renamed from `claude-head` to **`head-control`**; documentation URLs updated.
