@@ -124,7 +124,14 @@ jobs:
           CSRF=$(curl -sf -c /tmp/jar -X POST http://localhost:8000/api/auth/login \
             -H 'Content-Type: application/json' \
             -d '{"password":"ci-test-password"}' | python3 -c 'import json,sys;print(json.load(sys.stdin)["csrfToken"])')
-          curl -sf -b /tmp/jar http://localhost:8000/api/meta | grep -q '"reachable":true'
+          # The health monitor needs a moment for its first headscale probe;
+          # retry briefly before asserting reachability.
+          for i in $(seq 1 15); do
+            curl -sf -b /tmp/jar http://localhost:8000/api/meta | grep -q '"reachable":true' && break
+            sleep 1
+          done
+          curl -sf -b /tmp/jar http://localhost:8000/api/meta | tee /tmp/meta.json | grep -q '"reachable":true' \
+            || { echo "headscale never became reachable:"; cat /tmp/meta.json; exit 1; }
           curl -sf -b /tmp/jar -X POST http://localhost:8000/api/hs/users \
             -H "X-CSRF-Token: $CSRF" -H 'Content-Type: application/json' \
             -d '{"name":"ci-user"}' | grep -q '"ci-user"'

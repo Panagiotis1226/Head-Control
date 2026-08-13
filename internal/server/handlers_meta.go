@@ -14,6 +14,13 @@ import (
 // status banner and to decide which features to show.
 func (s *Server) handleMeta(w http.ResponseWriter, r *http.Request) {
 	hsStatus := s.health.get()
+	// Right after startup the background monitor may not have completed its
+	// first probe yet; a zero-value status would read as "headscale down".
+	// Probe synchronously once instead of reporting a false outage.
+	if hsStatus.CheckedAt == nil {
+		s.health.probe(r.Context())
+		hsStatus = s.health.get()
+	}
 
 	caps := map[string]any{
 		"policyFileMounted":    s.cfg.PolicyFilePath != "",
