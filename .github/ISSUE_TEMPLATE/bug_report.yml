@@ -1,0 +1,70 @@
+name: Bug report
+description: Something is broken or behaving unexpectedly
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report! The environment details below save a whole round of
+        back-and-forth — most Head-Control bugs depend on the headscale version and policy mode.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+      placeholder: |
+        1. Went to the ACL page
+        2. Clicked Save
+        3. Expected the policy to apply; got error "..."
+    validations:
+      required: true
+  - type: input
+    id: head-control-version
+    attributes:
+      label: Head-Control version
+      description: Shown at the bottom of the Settings page, or the image tag you deployed.
+      placeholder: "v0.1.1"
+    validations:
+      required: true
+  - type: input
+    id: headscale-version
+    attributes:
+      label: Headscale version
+      description: "`headscale version` — note Head-Control 1.x supports v0.29.0–v0.29.3 only."
+      placeholder: "v0.29.3"
+    validations:
+      required: true
+  - type: dropdown
+    id: policy-mode
+    attributes:
+      label: Headscale policy mode
+      options:
+        - database
+        - file
+        - not sure
+    validations:
+      required: true
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: How is Head-Control deployed?
+      options:
+        - deploy/docker-compose.yaml (UI-only, existing headscale)
+        - deploy/examples/full-stack (headscale + UI + Caddy)
+        - deploy/examples/file-mode
+        - Own compose / Docker setup
+        - Kubernetes
+        - Other (describe below)
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Container logs
+      description: "`docker compose logs head-control` around the time of the problem. Redact anything sensitive."
+      render: shell
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else?
+      description: Reverse proxy in front? BASE_PATH set? Browser console errors? Custom CA?

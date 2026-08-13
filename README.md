@@ -1,5 +1,11 @@
 # Head-Control
 
+[![CI](https://github.com/Panagiotis1226/Head-Control/actions/workflows/ci.yaml/badge.svg)](https://github.com/Panagiotis1226/Head-Control/actions/workflows/ci.yaml)
+[![Release](https://img.shields.io/github/v/release/Panagiotis1226/Head-Control)](https://github.com/Panagiotis1226/Head-Control/releases)
+[![Container](https://img.shields.io/badge/ghcr.io-head--control-blue?logo=docker)](https://github.com/Panagiotis1226/Head-Control/pkgs/container/head-control)
+[![License](https://img.shields.io/badge/license-MIT%20%2B%20Commons%20Clause-green)](LICENSE)
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-support-ff5e5b?logo=kofi&logoColor=white)](https://ko-fi.com/panagiotis1226)
+
 **A self-hosted admin console for [headscale](https://github.com/juanfont/headscale) v0.29.x** — the
 Tailscale control-plane experience, for your own coordination server.
 
