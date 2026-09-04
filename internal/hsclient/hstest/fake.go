@@ -17,6 +17,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/tailscale/hujson"
+
 	"github.com/panagiotis1226/head-control/internal/hsclient"
 )
 
@@ -598,12 +600,16 @@ func (f *Fake) registerPending(w http.ResponseWriter, userName, authID string) {
 }
 
 // validatePolicy is a shallow stand-in for headscale's policy validation:
-// it must be valid JSON (the fake doesn't implement HuJSON comment
-// stripping) and must not contain the marker "INVALID" (lets tests force
-// failures with structurally valid JSON).
+// it must be valid HuJSON (comments and trailing commas are stripped like
+// headscale does) and must not contain the marker "INVALID" (lets tests
+// force failures with structurally valid JSON).
 func (f *Fake) validatePolicy(policy string) (string, bool) {
 	var v any
-	if err := json.Unmarshal([]byte(policy), &v); err != nil {
+	std, err := hujson.Standardize([]byte(policy))
+	if err != nil {
+		return "parsing policy, syntax error: " + err.Error(), false
+	}
+	if err := json.Unmarshal(std, &v); err != nil {
 		return "parsing policy, syntax error: " + err.Error(), false
 	}
 	if strings.Contains(policy, "INVALID") {

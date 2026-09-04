@@ -7,6 +7,13 @@ All notable changes to Head-Control are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **ACLs Beta** tab: a structured, NetBird-style editor for `acls` rules, `groups`, `tagOwners`
+  and `hosts` next to the raw HuJSON editor. Rules get UI-local names, descriptions and an
+  enable/disable switch (stored in Head-Control's database; disabled rules leave the live policy).
+  Saves are applied as a minimal patch on the HuJSON document, so comments and formatting in
+  hand-written policies survive. New endpoints `GET/PUT /api/policy/model` with optimistic
+  concurrency (`baseHash`, 409 on drift). Other sections (`grants`, `ssh`, `autoApprovers`, …)
+  are preserved untouched.
 - Step-by-step VPS quick-start walkthrough in the README.
 - Ko-fi funding link (`FUNDING.yml` + README Support section).
 - Community files: security policy, issue templates, this changelog, README badges.

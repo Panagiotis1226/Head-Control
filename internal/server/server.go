@@ -172,6 +172,8 @@ func (s *Server) apiRoutes(r chi.Router) {
 		r.Post("/policy/check", s.handleCheckPolicy)
 		r.Get("/policy/versions", s.handleListPolicyVersions)
 		r.Get("/policy/versions/{id}", s.handleGetPolicyVersion)
+		r.Get("/policy/model", s.handleGetPolicyModel)
+		r.Put("/policy/model", s.handleSavePolicyModel)
 
 		r.Get("/dns", s.handleGetDNS)
 		r.Put("/dns/records", s.handleSaveDNSRecords)
