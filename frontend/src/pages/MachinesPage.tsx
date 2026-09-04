@@ -27,21 +27,7 @@ import {
   SecretModal,
   errorText,
 } from "../components/common";
-import {
-  Badge,
-  Button,
-  Checkbox,
-  EmptyState,
-  Field,
-  Input,
-  Modal,
-  OnlineDot,
-  Select,
-  Table,
-  Td,
-  Th,
-  useToast,
-} from "../components/ui";
+import { Badge, Button, Checkbox, EmptyState, Field, Input, Modal, OnlineDot, RowMenu, Select, Table, Td, Th, useToast } from "../components/ui";
 import {
   DAY,
   expiresWithin,
@@ -330,7 +316,6 @@ function NodeRow({
   onFilterUser: (user: string) => void;
   onFilterTag: (tag: string) => void;
 }) {
-  const [menuOpen, setMenuOpen] = useState(false);
   const tagged = (n.tags ?? []).length > 0;
   return (
     <tr className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
@@ -384,38 +369,20 @@ function NodeRow({
           {n.expiry ? relativeTime(n.expiry) : "never"}
         </span>
       </Td>
-      <Td className="relative">
-        <button
-          onClick={() => setMenuOpen(!menuOpen)}
-          onBlur={() => setTimeout(() => setMenuOpen(false), 150)}
-          className="rounded px-2 py-1 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
-          aria-label="Actions"
-        >
-          ⋯
-        </button>
-        {menuOpen && (
-          <div className="absolute right-2 top-9 z-20 w-44 rounded-md border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-700 dark:bg-slate-800">
-            {(
-              [
-                ["rename", "Rename"],
-                ["tags", "Edit tags"],
-                ["routes", "Edit route settings"],
-                ["expire", "Expiry…"],
-                ["delete", "Delete…"],
-              ] as const
-            ).map(([kind, label]) => (
-              <button
-                key={kind}
-                onClick={() => onAction(kind)}
-                className={`block w-full px-3 py-1.5 text-left text-sm hover:bg-slate-100 dark:hover:bg-slate-700 ${
-                  kind === "delete" ? "text-red-600 dark:text-red-400" : "text-slate-700 dark:text-slate-200"
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        )}
+      <Td>
+        <RowMenu
+          width="w-44"
+          items={
+            [
+              ["rename", "Rename"],
+              ["tags", "Edit tags"],
+              ["routes", "Edit route settings"],
+              ["expire", "Expiry…"],
+              ["delete", "Delete…"],
+            ] as const
+          }
+          onSelect={onAction}
+        />
       </Td>
     </tr>
   );
