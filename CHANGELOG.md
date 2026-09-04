@@ -6,6 +6,8 @@ All notable changes to Head-Control are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.2] — 2026-09-04
+
 ### Added
 - **ACLs Beta** tab: a structured, NetBird-style editor for `acls` rules, `groups`, `tagOwners`
   and `hosts` next to the raw HuJSON editor. Rules get UI-local names, descriptions and an
@@ -19,12 +21,20 @@ All notable changes to Head-Control are documented here. The format follows
 - Ko-fi funding link (`FUNDING.yml` + README Support section).
 - Community files: security policy, issue templates, this changelog, README badges.
 - UI screenshots (dashboard, ACL editor) in the README.
+- `:dev` container image published from every push to the `dev` branch (`dev-image` workflow),
+  stamped `<latest release>-dev`, for trying changes before a release.
 
 ### Changed
+- Pre-release tags (`v0.1.2-dev`, `v0.2.0-rc1`, …) no longer move `:latest`, the `major.minor`
+  tag or the `hs-v0.29` alias; only real release tags do.
 - Repository renamed from `claude-head` to **`head-control`**; documentation URLs updated.
   Old links redirect.
 - Go module path renamed to `github.com/panagiotis1226/head-control` to match (no public API —
   nothing imports this module).
+
+### Fixed
+- The "⋯" action menus on the Machines, Users and Keys tables were clipped by the table's scroll
+  container on the last rows; they now render fully.
 
 ## [0.1.1] — 2026-08-13
 
@@ -54,6 +64,7 @@ Initial release.
 - Contract test pinned to headscale v0.29.3's OpenAPI spec; CI smoke test against a real
   headscale.
 
-[Unreleased]: https://github.com/Panagiotis1226/Head-Control/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/Panagiotis1226/Head-Control/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/Panagiotis1226/Head-Control/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/Panagiotis1226/Head-Control/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/Panagiotis1226/Head-Control/releases/tag/v0.1.0
