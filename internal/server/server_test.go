@@ -686,3 +686,41 @@ func TestPolicyModelErrors(t *testing.T) {
 		t.Fatalf("fresh policy should be multi-line and contain the group:\n%s", env.fakePolicy())
 	}
 }
+
+// Policies written with "ACLs"/"Groups" (headscale matches keys
+// case-insensitively) must be patched in place, not given a lower-case twin.
+func TestPolicyModelMixedCaseKeys(t *testing.T) {
+	env := newTestEnv(t, nil)
+	env.fake.Mu.Lock()
+	env.fake.Policy = `{
+  "Groups": {"group:eng": ["alice@"]},
+  "ACLs": [
+    {"action": "accept", "src": ["group:eng"], "dst": ["*:*"]},
+  ],
+}`
+	env.fake.Mu.Unlock()
+	env.login()
+
+	// The fake behaves like headscale: duplicate keys are rejected.
+	resp := env.do("PUT", "/api/policy", map[string]string{"policy": `{"acls": [], "ACLs": []}`}, true)
+	if resp.StatusCode != 400 {
+		t.Fatalf("fake should reject duplicate keys, got %d", resp.StatusCode)
+	}
+	resp.Body.Close()
+
+	m := env.getModel()
+	if len(m.Rules) != 1 || len(m.Groups) != 1 || len(m.OtherSections) != 0 {
+		t.Fatalf("mixed-case sections not recognised: %+v", m)
+	}
+	m.Rules = append(m.Rules, modelRuleJSON{Action: "accept", Src: []string{"alice@"}, Dst: []string{"group:eng:22"}, Name: "test", Enabled: true})
+	resp = env.putModel(m, "")
+	if resp.StatusCode != 200 {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("save failed: %d %s", resp.StatusCode, body)
+	}
+	resp.Body.Close()
+	live := env.fakePolicy()
+	if strings.Contains(live, `"acls"`) || strings.Count(live, `"ACLs"`) != 1 || !strings.Contains(live, `"group:eng:22"`) {
+		t.Fatalf("expected the rule appended under the existing ACLs key:\n%s", live)
+	}
+}

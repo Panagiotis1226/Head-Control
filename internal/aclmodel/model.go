@@ -55,6 +55,19 @@ type Document struct {
 	// Other lists top-level keys this editor does not manage, in document
 	// order (grants, ssh, autoApprovers, tests, ...).
 	Other []string
+	// keys maps each editable section to the key name actually used in the
+	// document. Headscale matches keys case-insensitively, so "ACLs" is a
+	// valid spelling of acls and every patch must address it as written.
+	keys map[string]string
+}
+
+// KeyName returns the document's spelling of an editable section (the
+// canonical lower-case name when the section is absent).
+func (d *Document) KeyName(section string) string {
+	if k, ok := d.keys[section]; ok {
+		return k
+	}
+	return section
 }
 
 // UnsupportedError marks a document this editor cannot represent (bad
@@ -75,19 +88,21 @@ func (e *UnsupportedError) Error() string {
 // Editable sections, in the order they are emitted for new documents.
 var editableSections = []string{"groups", "tagOwners", "hosts", "acls"}
 
-func isEditable(key string) bool {
+// editableSection returns the canonical section a top-level key refers to
+// (case-insensitively, like headscale's decoder), or "".
+func editableSection(key string) string {
 	for _, s := range editableSections {
-		if s == key {
-			return true
+		if strings.EqualFold(s, key) {
+			return s
 		}
 	}
-	return false
+	return ""
 }
 
 // ParseDocument parses a policy document. Empty or comments-only input is a
 // fresh, empty policy.
 func ParseDocument(raw string) (*Document, error) {
-	d := &Document{}
+	d := &Document{keys: map[string]string{}}
 	if strings.TrimSpace(raw) == "" {
 		d.root, _ = hujson.Parse([]byte("{}"))
 		d.Fresh = true
@@ -131,33 +146,39 @@ func ParseDocument(raw string) (*Document, error) {
 			return nil, &UnsupportedError{Msg: "object key is not a string"}
 		}
 		key := lit.String()
-		if !isEditable(key) {
+		section := editableSection(key)
+		if section == "" {
 			d.Other = append(d.Other, key)
+			continue
 		}
+		if prev, dup := d.keys[section]; dup {
+			return nil, &UnsupportedError{Path: section, Msg: fmt.Sprintf("appears twice (%q and %q) — headscale rejects duplicate keys", prev, key)}
+		}
+		d.keys[section] = key
 	}
 	if d.Other == nil {
 		d.Other = []string{}
 	}
 
-	if raw, ok := present(top, "groups"); ok {
+	if raw, ok := present(top, d.KeyName("groups")); ok {
 		if err := strictUnmarshal(raw, &d.Model.Groups); err != nil {
 			return nil, &UnsupportedError{Path: "groups", Msg: `must be an object of "group:name": ["user@", ...]`}
 		}
 		d.Model.HasGroups = true
 	}
-	if raw, ok := present(top, "tagOwners"); ok {
+	if raw, ok := present(top, d.KeyName("tagOwners")); ok {
 		if err := strictUnmarshal(raw, &d.Model.TagOwners); err != nil {
 			return nil, &UnsupportedError{Path: "tagOwners", Msg: `must be an object of "tag:name": ["group:x", "user@", ...]`}
 		}
 		d.Model.HasTagOwners = true
 	}
-	if raw, ok := present(top, "hosts"); ok {
+	if raw, ok := present(top, d.KeyName("hosts")); ok {
 		if err := strictUnmarshal(raw, &d.Model.Hosts); err != nil {
 			return nil, &UnsupportedError{Path: "hosts", Msg: `must be an object of "name": "ip-or-cidr"`}
 		}
 		d.Model.HasHosts = true
 	}
-	if raw, ok := present(top, "acls"); ok {
+	if raw, ok := present(top, d.KeyName("acls")); ok {
 		var items []json.RawMessage
 		if err := json.Unmarshal(raw, &items); err != nil {
 			return nil, &UnsupportedError{Path: "acls", Msg: "must be an array of rules"}

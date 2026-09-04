@@ -34,6 +34,10 @@ func escapePointer(s string) string {
 	return strings.ReplaceAll(strings.ReplaceAll(s, "~", "~0"), "/", "~1")
 }
 
+func unescapePointer(s string) string {
+	return strings.ReplaceAll(strings.ReplaceAll(s, "~1", "/"), "~0", "~")
+}
+
 // Plan computes the minimal JSON Patch that turns the document's model into
 // the one described by in. Untouched keys and rules emit no operation, so
 // their comments survive.
@@ -42,17 +46,20 @@ func (d *Document) Plan(in *Input) (*Patch, error) {
 	var ops []op
 	old := d.Model
 
+	// Sections are addressed by the key name the document actually uses
+	// ("ACLs" is valid for headscale); adding a lower-case twin would make
+	// headscale reject the document for duplicate keys.
 	if in.Groups != nil {
-		ops = append(ops, diffListMap("groups", old.HasGroups, old.Groups, in.Groups, unit)...)
+		ops = append(ops, diffListMap(d.KeyName("groups"), old.HasGroups, old.Groups, in.Groups, unit)...)
 	}
 	if in.TagOwners != nil {
-		ops = append(ops, diffListMap("tagOwners", old.HasTagOwners, old.TagOwners, in.TagOwners, unit)...)
+		ops = append(ops, diffListMap(d.KeyName("tagOwners"), old.HasTagOwners, old.TagOwners, in.TagOwners, unit)...)
 	}
 	if in.Hosts != nil {
-		ops = append(ops, diffStringMap("hosts", old.HasHosts, old.Hosts, in.Hosts, unit)...)
+		ops = append(ops, diffStringMap(d.KeyName("hosts"), old.HasHosts, old.Hosts, in.Hosts, unit)...)
 	}
 	if in.Rules != nil {
-		ops = append(ops, diffACLs(old.HasACLs, old.ACLs, in.EnabledRules(), unit)...)
+		ops = append(ops, diffACLs(d.KeyName("acls"), old.HasACLs, old.ACLs, in.EnabledRules(), unit)...)
 	}
 
 	p := &Patch{Ops: len(ops), ops: ops, trailing: map[string]bool{}, wasEmpty: map[string]bool{}}
@@ -61,10 +68,11 @@ func (d *Document) Plan(in *Input) (*Patch, error) {
 		return p, nil
 	}
 	for _, s := range editableSections {
-		if v := d.root.Find("/" + s); v != nil {
+		k := d.KeyName(s)
+		if v := d.root.Find("/" + escapePointer(k)); v != nil {
 			last, n := lastChild(v)
-			p.wasEmpty[s] = n == 0
-			p.trailing[s] = last != nil && last.AfterExtra != nil
+			p.wasEmpty[k] = n == 0
+			p.trailing[k] = last != nil && last.AfterExtra != nil
 		}
 	}
 	p.bytes = encodePatch(ops)
@@ -124,6 +132,7 @@ func (d *Document) Apply(p *Patch) (string, error) {
 // ---- diffing ----
 
 func diffListMap(section string, had bool, old, cur map[string][]string, unit string) []op {
+	base := "/" + escapePointer(section)
 	if !had {
 		if len(cur) == 0 {
 			return nil
@@ -137,27 +146,28 @@ func diffListMap(section string, had bool, old, cur map[string][]string, unit st
 			sb.WriteString("\n" + unit + unit + quote(k) + ": " + renderStrings(cur[k]))
 		}
 		sb.WriteString("\n" + unit + "}")
-		return []op{{Op: "add", Path: "/" + section, Value: json.RawMessage(sb.String())}}
+		return []op{{Op: "add", Path: base, Value: json.RawMessage(sb.String())}}
 	}
 	var ops []op
 	for _, k := range sortedKeys(old) {
 		if _, ok := cur[k]; !ok {
-			ops = append(ops, op{Op: "remove", Path: "/" + section + "/" + escapePointer(k)})
+			ops = append(ops, op{Op: "remove", Path: base + "/" + escapePointer(k)})
 		}
 	}
 	for _, k := range sortedKeys(cur) {
 		ov, ok := old[k]
 		switch {
 		case !ok:
-			ops = append(ops, op{Op: "add", Path: "/" + section + "/" + escapePointer(k), Value: json.RawMessage(renderStrings(cur[k]))})
+			ops = append(ops, op{Op: "add", Path: base + "/" + escapePointer(k), Value: json.RawMessage(renderStrings(cur[k]))})
 		case !equalStrings(ov, cur[k]):
-			ops = append(ops, op{Op: "replace", Path: "/" + section + "/" + escapePointer(k), Value: json.RawMessage(renderStrings(cur[k]))})
+			ops = append(ops, op{Op: "replace", Path: base + "/" + escapePointer(k), Value: json.RawMessage(renderStrings(cur[k]))})
 		}
 	}
 	return ops
 }
 
 func diffStringMap(section string, had bool, old, cur map[string]string, unit string) []op {
+	base := "/" + escapePointer(section)
 	if !had {
 		if len(cur) == 0 {
 			return nil
@@ -171,21 +181,21 @@ func diffStringMap(section string, had bool, old, cur map[string]string, unit st
 			sb.WriteString("\n" + unit + unit + quote(k) + ": " + quote(cur[k]))
 		}
 		sb.WriteString("\n" + unit + "}")
-		return []op{{Op: "add", Path: "/" + section, Value: json.RawMessage(sb.String())}}
+		return []op{{Op: "add", Path: base, Value: json.RawMessage(sb.String())}}
 	}
 	var ops []op
 	for _, k := range sortedKeys(old) {
 		if _, ok := cur[k]; !ok {
-			ops = append(ops, op{Op: "remove", Path: "/" + section + "/" + escapePointer(k)})
+			ops = append(ops, op{Op: "remove", Path: base + "/" + escapePointer(k)})
 		}
 	}
 	for _, k := range sortedKeys(cur) {
 		ov, ok := old[k]
 		switch {
 		case !ok:
-			ops = append(ops, op{Op: "add", Path: "/" + section + "/" + escapePointer(k), Value: json.RawMessage(quote(cur[k]))})
+			ops = append(ops, op{Op: "add", Path: base + "/" + escapePointer(k), Value: json.RawMessage(quote(cur[k]))})
 		case ov != cur[k]:
-			ops = append(ops, op{Op: "replace", Path: "/" + section + "/" + escapePointer(k), Value: json.RawMessage(quote(cur[k]))})
+			ops = append(ops, op{Op: "replace", Path: base + "/" + escapePointer(k), Value: json.RawMessage(quote(cur[k]))})
 		}
 	}
 	return ops
@@ -195,7 +205,8 @@ func diffStringMap(section string, had bool, old, cur map[string]string, unit st
 // subsequence in place: removes (descending) then adds (ascending) rebuild
 // exactly the new list while unchanged rules keep their position and
 // comments.
-func diffACLs(had bool, old, cur []Rule, unit string) []op {
+func diffACLs(section string, had bool, old, cur []Rule, unit string) []op {
+	base := "/" + escapePointer(section)
 	if !had {
 		if len(cur) == 0 {
 			return nil
@@ -209,7 +220,7 @@ func diffACLs(had bool, old, cur []Rule, unit string) []op {
 			sb.WriteString("\n" + unit + unit + renderRule(r))
 		}
 		sb.WriteString("\n" + unit + "]")
-		return []op{{Op: "add", Path: "/acls", Value: json.RawMessage(sb.String())}}
+		return []op{{Op: "add", Path: base, Value: json.RawMessage(sb.String())}}
 	}
 	oldFP := make([]string, len(old))
 	for i, r := range old {
@@ -224,12 +235,12 @@ func diffACLs(had bool, old, cur []Rule, unit string) []op {
 	var ops []op
 	for i := len(old) - 1; i >= 0; i-- {
 		if !keepOld[i] {
-			ops = append(ops, op{Op: "remove", Path: fmt.Sprintf("/acls/%d", i)})
+			ops = append(ops, op{Op: "remove", Path: fmt.Sprintf("%s/%d", base, i)})
 		}
 	}
 	for j := range cur {
 		if !keepCur[j] {
-			ops = append(ops, op{Op: "add", Path: fmt.Sprintf("/acls/%d", j), Value: json.RawMessage(renderRule(cur[j]))})
+			ops = append(ops, op{Op: "add", Path: fmt.Sprintf("%s/%d", base, j), Value: json.RawMessage(renderRule(cur[j]))})
 		}
 	}
 	return ops
@@ -360,7 +371,7 @@ func (d *Document) tidy(p *Patch) {
 			continue
 		}
 		parts := strings.SplitN(o.Path[1:], "/", 2)
-		section := parts[0]
+		section := unescapePointer(parts[0]) // actual key name as written in the document
 		touched[section] = true
 		if len(parts) == 1 {
 			// whole-section add: indent the key like other top-level keys
@@ -379,11 +390,11 @@ func (d *Document) tidy(p *Patch) {
 		if o.Op != "add" && o.Op != "replace" {
 			continue
 		}
-		sec := d.root.Find("/" + section)
+		sec := d.root.Find("/" + parts[0])
 		if sec == nil {
 			continue
 		}
-		key := strings.ReplaceAll(strings.ReplaceAll(parts[1], "~1", "/"), "~0", "~")
+		key := unescapePointer(parts[1])
 		switch c := sec.Value.(type) {
 		case *hujson.Object:
 			for i := range c.Members {
@@ -409,7 +420,7 @@ func (d *Document) tidy(p *Patch) {
 		}
 	}
 	for section := range touched {
-		sec := d.root.Find("/" + section)
+		sec := d.root.Find("/" + escapePointer(section))
 		if sec == nil {
 			continue
 		}

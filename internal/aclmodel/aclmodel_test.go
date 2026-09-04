@@ -373,3 +373,46 @@ func TestTidyLayout(t *testing.T) {
 		t.Fatalf("layout mismatch:\n--- got ---\n%s\n--- want ---\n%s", out, want)
 	}
 }
+
+// Headscale matches top-level keys case-insensitively, so "ACLs" is a valid
+// spelling. Patches must address the key as written; adding a lower-case
+// twin makes headscale reject the document ("duplicate object member name").
+func TestMixedCaseSectionKeys(t *testing.T) {
+	raw := `{
+  "Groups": {
+    "group:eng": ["alice@"],
+  },
+  "TagOwners": {
+    "tag:web": ["group:eng"],
+  },
+  "ACLs": [
+    // keep me
+    {"action": "accept", "src": ["group:eng"], "dst": ["tag:web:443"]},
+  ],
+}
+`
+	d := mustParse(t, raw)
+	if !d.Model.HasACLs || !d.Model.HasGroups || !d.Model.HasTagOwners || len(d.Other) != 0 {
+		t.Fatalf("mixed-case sections not recognised: %+v other=%v", d.Model, d.Other)
+	}
+	if d.KeyName("acls") != "ACLs" || d.KeyName("hosts") != "hosts" {
+		t.Fatalf("KeyName wrong: %q %q", d.KeyName("acls"), d.KeyName("hosts"))
+	}
+	in := inputFrom(d.Model)
+	in.Rules = append(in.Rules, InputRule{Action: "accept", Src: []string{"alice@"}, Dst: []string{"tag:web:22"}, Enabled: true})
+	in.Groups["group:ops"] = []string{"bob@"}
+	in.Hosts = map[string]string{"db1": "10.0.0.5"}
+	out, nd := roundTrip(t, raw, in)
+	if strings.Contains(out, `"acls"`) || strings.Count(out, `"ACLs"`) != 1 || strings.Count(out, `"Groups"`) != 1 {
+		t.Fatalf("expected the original key spelling only:\n%s", out)
+	}
+	if !strings.Contains(out, "// keep me") || !strings.Contains(out, `"hosts"`) || len(nd.Model.ACLs) != 2 {
+		t.Fatalf("round trip wrong:\n%s", out)
+	}
+
+	_, err := ParseDocument(`{"acls": [], "ACLs": []}`)
+	var ue *UnsupportedError
+	if !errors.As(err, &ue) || ue.Path != "acls" {
+		t.Fatalf("expected duplicate-section error, got %v", err)
+	}
+}
