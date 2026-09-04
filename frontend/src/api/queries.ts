@@ -19,6 +19,9 @@ import type {
   Node,
   Overview,
   PolicySaveResult,
+  PolicyModel,
+  PolicyModelSave,
+  PolicyModelSaveResult,
   PolicyState,
   PolicyVersion,
   PreAuthKey,
@@ -109,6 +112,14 @@ export const usePolicyVersions = () =>
 
 export const getPolicyVersion = async (id: number) =>
   (await get<{ version: PolicyVersion }>(`/api/policy/versions/${id}`)).version;
+
+/** Structured view for the ACLs Beta editor. */
+export const usePolicyModel = () =>
+  useQuery({
+    queryKey: ["policy-model"],
+    queryFn: () => get<PolicyModel>("/api/policy/model"),
+    refetchInterval: 60_000,
+  });
 
 // ---- dns ----
 
@@ -286,8 +297,13 @@ export const checkPolicy = (policy: string) =>
   post<{ valid: boolean }>("/api/policy/check", { policy });
 
 export const useSavePolicy = () =>
-  useInvalidating([["policy"], ["policy-versions"]], (v: { policy: string; comment?: string }) =>
+  useInvalidating([["policy"], ["policy-model"], ["policy-versions"]], (v: { policy: string; comment?: string }) =>
     put<PolicySaveResult>("/api/policy", v),
+  );
+
+export const useSavePolicyModel = () =>
+  useInvalidating([["policy"], ["policy-model"], ["policy-versions"]], (v: PolicyModelSave) =>
+    put<PolicyModelSaveResult>("/api/policy/model", v),
   );
 
 // DNS

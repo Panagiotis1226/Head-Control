@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -412,5 +413,314 @@ func TestRegistrationHandoffs(t *testing.T) {
 	}](t, resp)
 	if len(out.Handoffs) != 1 || out.Handoffs[0].AuthID != "hskey-reg-xyz123" || out.Handoffs[0].Status != "ok" {
 		t.Fatalf("unexpected handoffs: %+v", out.Handoffs)
+	}
+}
+
+// ---- ACLs Beta structured model ----
+
+const modelFixture = `// hand-written policy, keep me
+{
+  "groups": {
+    "group:eng": ["alice@"],
+  },
+  "acls": [
+    // eng to web
+    {"action": "accept", "src": ["group:eng"], "dst": ["tag:web:443"]},
+    // legacy allow-all
+    {"action": "accept", "src": ["*"], "dst": ["*:*"]},
+  ],
+  "ssh": [
+    {"action": "accept", "src": ["group:eng"], "dst": ["autogroup:member"], "users": ["autogroup:nonroot"]},
+  ],
+}
+`
+
+type modelRuleJSON struct {
+	ID          string   `json:"id"`
+	Action      string   `json:"action"`
+	Proto       string   `json:"proto,omitempty"`
+	Src         []string `json:"src"`
+	Dst         []string `json:"dst"`
+	Name        string   `json:"name"`
+	Description string   `json:"description"`
+	Enabled     bool     `json:"enabled"`
+}
+
+type modelJSON struct {
+	Hash          string              `json:"hash"`
+	Mode          string              `json:"mode"`
+	Writable      bool                `json:"writable"`
+	Groups        map[string][]string `json:"groups"`
+	TagOwners     map[string][]string `json:"tagOwners"`
+	Hosts         map[string]string   `json:"hosts"`
+	Rules         []modelRuleJSON     `json:"rules"`
+	OtherSections []string            `json:"otherSections"`
+}
+
+func (e *testEnv) getModel() modelJSON {
+	e.t.Helper()
+	resp := e.do("GET", "/api/policy/model", nil, false)
+	if resp.StatusCode != 200 {
+		body, _ := io.ReadAll(resp.Body)
+		e.t.Fatalf("GET model: %d %s", resp.StatusCode, body)
+	}
+	return decode[modelJSON](e.t, resp)
+}
+
+func (e *testEnv) putModel(m modelJSON, comment string) *http.Response {
+	e.t.Helper()
+	rules := make([]map[string]any, 0, len(m.Rules))
+	for _, r := range m.Rules {
+		row := map[string]any{"action": r.Action, "src": r.Src, "dst": r.Dst, "name": r.Name, "description": r.Description, "enabled": r.Enabled}
+		if r.Proto != "" {
+			row["proto"] = r.Proto
+		}
+		rules = append(rules, row)
+	}
+	return e.do("PUT", "/api/policy/model", map[string]any{
+		"baseHash": m.Hash, "comment": comment,
+		"groups": m.Groups, "tagOwners": m.TagOwners, "hosts": m.Hosts, "rules": rules,
+	}, true)
+}
+
+func (e *testEnv) fakePolicy() string {
+	e.fake.Mu.Lock()
+	defer e.fake.Mu.Unlock()
+	return e.fake.Policy
+}
+
+func TestPolicyModelRoundTrip(t *testing.T) {
+	env := newTestEnv(t, nil)
+	env.fake.Mu.Lock()
+	env.fake.Policy = modelFixture
+	env.fake.Mu.Unlock()
+	env.login()
+
+	m := env.getModel()
+	if len(m.Rules) != 2 || len(m.Groups) != 1 || len(m.OtherSections) != 1 || m.OtherSections[0] != "ssh" {
+		t.Fatalf("unexpected model: %+v", m)
+	}
+	if m.Rules[0].ID == "" || !m.Rules[0].Enabled || m.Hash == "" || len(m.TagOwners) != 0 || len(m.Hosts) != 0 {
+		t.Fatalf("model fields wrong: %+v", m)
+	}
+
+	// Disable + name rule 2, add a group, add a tag owner.
+	m.Rules[1].Enabled = false
+	m.Rules[1].Name = "Old allow-all"
+	m.Rules[0].Description = "web tier"
+	m.Groups["group:sec"] = []string{"dave@"}
+	m.TagOwners = map[string][]string{"tag:web": {"group:eng"}}
+	resp := env.putModel(m, "first structured save")
+	out := decode[struct {
+		Mode          string `json:"mode"`
+		PolicyChanged bool   `json:"policyChanged"`
+		VersionID     int64  `json:"versionId"`
+	}](t, resp)
+	if resp.StatusCode != 200 || !out.PolicyChanged || out.Mode != "database" || out.VersionID == 0 {
+		t.Fatalf("unexpected save result: %d %+v", resp.StatusCode, out)
+	}
+	live := env.fakePolicy()
+	for _, want := range []string{"// hand-written policy, keep me", "// eng to web", `"ssh"`, `"group:sec": ["dave@"]`, `"tag:web": ["group:eng"]`} {
+		if !strings.Contains(live, want) {
+			t.Fatalf("live policy lost %q:\n%s", want, live)
+		}
+	}
+	if strings.Contains(live, `"dst": ["*:*"]`) {
+		t.Fatalf("disabled rule should be removed from the live policy:\n%s", live)
+	}
+
+	// GET shows the disabled rule at its position with its name; metadata stuck.
+	m = env.getModel()
+	if len(m.Rules) != 2 || m.Rules[1].Enabled || m.Rules[1].Name != "Old allow-all" || m.Rules[0].Description != "web tier" {
+		t.Fatalf("disabled rule not merged back: %+v", m.Rules)
+	}
+	if len(m.Groups) != 2 || len(m.TagOwners) != 1 {
+		t.Fatalf("sections not updated: %+v", m)
+	}
+
+	// Metadata-only change: no headscale call, no new version.
+	resp = env.do("GET", "/api/policy/versions", nil, false)
+	before := len(decode[struct {
+		Versions []store.PolicyVersion `json:"versions"`
+	}](t, resp).Versions)
+	m.Rules[0].Name = "Eng to web"
+	resp = env.putModel(m, "")
+	out2 := decode[struct {
+		PolicyChanged bool `json:"policyChanged"`
+	}](t, resp)
+	if resp.StatusCode != 200 || out2.PolicyChanged {
+		t.Fatalf("metadata-only save should not change the policy: %d %+v", resp.StatusCode, out2)
+	}
+	resp = env.do("GET", "/api/policy/versions", nil, false)
+	after := len(decode[struct {
+		Versions []store.PolicyVersion `json:"versions"`
+	}](t, resp).Versions)
+	if after != before {
+		t.Fatalf("metadata-only save created a version (%d -> %d)", before, after)
+	}
+
+	// Re-enable: the rule returns to the live policy.
+	m = env.getModel()
+	m.Rules[1].Enabled = true
+	resp = env.putModel(m, "re-enable")
+	if resp.StatusCode != 200 {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("re-enable failed: %d %s", resp.StatusCode, body)
+	}
+	resp.Body.Close()
+	if !strings.Contains(env.fakePolicy(), `"dst": ["*:*"]`) {
+		t.Fatalf("re-enabled rule missing:\n%s", env.fakePolicy())
+	}
+	m = env.getModel()
+	if len(m.Rules) != 2 || !m.Rules[1].Enabled || m.Rules[1].Name != "Old allow-all" || m.Rules[0].Name != "Eng to web" {
+		t.Fatalf("names lost after re-enable: %+v", m.Rules)
+	}
+}
+
+func TestPolicyModelConflict(t *testing.T) {
+	env := newTestEnv(t, nil)
+	env.fake.Mu.Lock()
+	env.fake.Policy = modelFixture
+	env.fake.Mu.Unlock()
+	env.login()
+
+	m := env.getModel()
+	good := m.Hash
+	m.Hash = "stale"
+	resp := env.putModel(m, "")
+	if resp.StatusCode != 409 {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 409, got %d %s", resp.StatusCode, body)
+	}
+	conflict := decode[struct {
+		Error   struct{ Code string }
+		Current modelJSON `json:"current"`
+	}](t, resp)
+	if conflict.Error.Code != "conflict" || conflict.Current.Hash != good || len(conflict.Current.Rules) != 2 {
+		t.Fatalf("conflict body wrong: %+v", conflict)
+	}
+
+	// force bypasses the check.
+	resp = env.do("PUT", "/api/policy/model", map[string]any{
+		"baseHash": "stale", "force": true,
+		"groups": map[string][]string{"group:eng": {"alice@", "bob@"}},
+	}, true)
+	if resp.StatusCode != 200 {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("force save failed: %d %s", resp.StatusCode, body)
+	}
+	resp.Body.Close()
+	if !strings.Contains(env.fakePolicy(), `"bob@"`) {
+		t.Fatalf("force save not applied:\n%s", env.fakePolicy())
+	}
+}
+
+func TestPolicyModelErrors(t *testing.T) {
+	env := newTestEnv(t, nil)
+	env.login()
+
+	// Unsupported shape → 422.
+	env.fake.Mu.Lock()
+	env.fake.Policy = `{"acls":[{"action":"accept","src":[1],"dst":["*:*"]}]}`
+	env.fake.Mu.Unlock()
+	resp := env.do("GET", "/api/policy/model", nil, false)
+	if resp.StatusCode != 422 {
+		t.Fatalf("expected 422 for unsupported policy, got %d", resp.StatusCode)
+	}
+	e := decode[struct {
+		Error struct{ Code, Message string }
+	}](t, resp)
+	if e.Error.Code != "model_unsupported" || !strings.Contains(e.Error.Message, "acls[0]") {
+		t.Fatalf("unexpected error body: %+v", e)
+	}
+
+	// Shape validation → 400 with the field path.
+	env.fake.Mu.Lock()
+	env.fake.Policy = `{"acls":[]}`
+	env.fake.Mu.Unlock()
+	m := env.getModel()
+	resp = env.do("PUT", "/api/policy/model", map[string]any{
+		"baseHash": m.Hash,
+		"rules":    []map[string]any{{"action": "deny", "src": []string{"a@"}, "dst": []string{"*:*"}, "enabled": true}},
+	}, true)
+	if resp.StatusCode != 400 {
+		t.Fatalf("expected 400, got %d", resp.StatusCode)
+	}
+	e = decode[struct {
+		Error struct{ Code, Message string }
+	}](t, resp)
+	if e.Error.Code != "model_invalid" || !strings.Contains(e.Error.Message, "rules[0].action") {
+		t.Fatalf("unexpected validation error: %+v", e)
+	}
+
+	// Headscale's own check rejects → 400 invalid_argument, nothing written.
+	resp = env.do("PUT", "/api/policy/model", map[string]any{
+		"baseHash": m.Hash,
+		"rules":    []map[string]any{{"action": "accept", "src": []string{"INVALID"}, "dst": []string{"*:*"}, "enabled": true}},
+	}, true)
+	if resp.StatusCode != 400 {
+		t.Fatalf("expected 400 from headscale check, got %d", resp.StatusCode)
+	}
+	resp.Body.Close()
+	if env.fakePolicy() != `{"acls":[]}` {
+		t.Fatalf("policy must be untouched after a failed check: %s", env.fakePolicy())
+	}
+
+	// Empty database-mode policy: model is empty and editable.
+	env.fake.Mu.Lock()
+	env.fake.Policy = ""
+	env.fake.Mu.Unlock()
+	m = env.getModel()
+	if len(m.Rules) != 0 || !m.Writable {
+		t.Fatalf("expected empty writable model: %+v", m)
+	}
+	m.Groups = map[string][]string{"group:eng": {"alice@"}}
+	m.Rules = []modelRuleJSON{{Action: "accept", Src: []string{"group:eng"}, Dst: []string{"*:*"}, Enabled: true}}
+	resp = env.putModel(m, "bootstrap")
+	if resp.StatusCode != 200 {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("bootstrap save failed: %d %s", resp.StatusCode, body)
+	}
+	resp.Body.Close()
+	if !strings.Contains(env.fakePolicy(), "\n") || !strings.Contains(env.fakePolicy(), `"group:eng"`) {
+		t.Fatalf("fresh policy should be multi-line and contain the group:\n%s", env.fakePolicy())
+	}
+}
+
+// Policies written with "ACLs"/"Groups" (headscale matches keys
+// case-insensitively) must be patched in place, not given a lower-case twin.
+func TestPolicyModelMixedCaseKeys(t *testing.T) {
+	env := newTestEnv(t, nil)
+	env.fake.Mu.Lock()
+	env.fake.Policy = `{
+  "Groups": {"group:eng": ["alice@"]},
+  "ACLs": [
+    {"action": "accept", "src": ["group:eng"], "dst": ["*:*"]},
+  ],
+}`
+	env.fake.Mu.Unlock()
+	env.login()
+
+	// The fake behaves like headscale: duplicate keys are rejected.
+	resp := env.do("PUT", "/api/policy", map[string]string{"policy": `{"acls": [], "ACLs": []}`}, true)
+	if resp.StatusCode != 400 {
+		t.Fatalf("fake should reject duplicate keys, got %d", resp.StatusCode)
+	}
+	resp.Body.Close()
+
+	m := env.getModel()
+	if len(m.Rules) != 1 || len(m.Groups) != 1 || len(m.OtherSections) != 0 {
+		t.Fatalf("mixed-case sections not recognised: %+v", m)
+	}
+	m.Rules = append(m.Rules, modelRuleJSON{Action: "accept", Src: []string{"alice@"}, Dst: []string{"group:eng:22"}, Name: "test", Enabled: true})
+	resp = env.putModel(m, "")
+	if resp.StatusCode != 200 {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("save failed: %d %s", resp.StatusCode, body)
+	}
+	resp.Body.Close()
+	live := env.fakePolicy()
+	if strings.Contains(live, `"acls"`) || strings.Count(live, `"ACLs"`) != 1 || !strings.Contains(live, `"group:eng:22"`) {
+		t.Fatalf("expected the rule appended under the existing ACLs key:\n%s", live)
 	}
 }

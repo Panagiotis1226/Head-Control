@@ -6,6 +6,7 @@
 package hstest
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -16,6 +17,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/tailscale/hujson"
 
 	"github.com/panagiotis1226/head-control/internal/hsclient"
 )
@@ -598,13 +601,20 @@ func (f *Fake) registerPending(w http.ResponseWriter, userName, authID string) {
 }
 
 // validatePolicy is a shallow stand-in for headscale's policy validation:
-// it must be valid JSON (the fake doesn't implement HuJSON comment
-// stripping) and must not contain the marker "INVALID" (lets tests force
-// failures with structurally valid JSON).
+// it must be valid HuJSON (comments and trailing commas are stripped like
+// headscale does) and must not contain the marker "INVALID" (lets tests
+// force failures with structurally valid JSON).
 func (f *Fake) validatePolicy(policy string) (string, bool) {
 	var v any
-	if err := json.Unmarshal([]byte(policy), &v); err != nil {
+	std, err := hujson.Standardize([]byte(policy))
+	if err != nil {
 		return "parsing policy, syntax error: " + err.Error(), false
+	}
+	if err := json.Unmarshal(std, &v); err != nil {
+		return "parsing policy, syntax error: " + err.Error(), false
+	}
+	if name, dup := duplicateMember(std); dup {
+		return fmt.Sprintf("parsing policy: parsing policy from bytes: jsontext: duplicate object member name %q", name), false
 	}
 	if strings.Contains(policy, "INVALID") {
 		return `verifying policy rules: invalid or unknown field in src=["INVALID"]`, false
@@ -652,4 +662,57 @@ var hostnameRe = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$`)
 
 func validHostname(name string) bool {
 	return len(name) >= 2 && hostnameRe.MatchString(name)
+}
+
+// duplicateMember reports the first object member name that repeats within
+// one object (case-insensitively, mirroring headscale's decoder). Real
+// headscale rejects such documents; encoding/json silently keeps the last.
+func duplicateMember(doc []byte) (string, bool) {
+	type frame struct {
+		object    bool
+		expectKey bool
+		names     []string
+	}
+	dec := json.NewDecoder(bytes.NewReader(doc))
+	var stack []*frame
+	for {
+		tok, err := dec.Token()
+		if err != nil {
+			return "", false
+		}
+		var top *frame
+		if len(stack) > 0 {
+			top = stack[len(stack)-1]
+		}
+		if top != nil && top.object && top.expectKey {
+			// Either a member name or the '}' that closes the object.
+			if key, ok := tok.(string); ok {
+				for _, seen := range top.names {
+					if strings.EqualFold(seen, key) {
+						return strings.ToLower(key), true
+					}
+				}
+				top.names = append(top.names, key)
+				top.expectKey = false
+				continue
+			}
+		}
+		switch t := tok.(type) {
+		case json.Delim:
+			switch t {
+			case '{':
+				stack = append(stack, &frame{object: true, expectKey: true})
+				continue
+			case '[':
+				stack = append(stack, &frame{})
+				continue
+			default: // '}' or ']'
+				stack = stack[:len(stack)-1]
+			}
+		}
+		// A value (scalar or closed composite) finished: back to a key.
+		if len(stack) > 0 && stack[len(stack)-1].object {
+			stack[len(stack)-1].expectKey = true
+		}
+	}
 }

@@ -279,6 +279,82 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   );
 }
 
+// ---- row action menu ----
+
+/**
+ * "⋯" menu for table rows. Rendered with position: fixed so it is not clipped
+ * by the Table's overflow-x-auto scroll container.
+ */
+export function RowMenu<K extends string>({
+  items,
+  onSelect,
+  width = "w-40",
+}: {
+  items: ReadonlyArray<readonly [K, string]>;
+  onSelect: (kind: K) => void;
+  width?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<{ top: number; right: number }>({ top: 0, right: 0 });
+  const btnRef = useRef<HTMLButtonElement>(null);
+
+  const toggle = () => {
+    if (!open && btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect();
+      setPos({ top: r.bottom + 4, right: Math.max(8, window.innerWidth - r.right) });
+    }
+    setOpen(!open);
+  };
+
+  // The menu is anchored to the viewport; close it if the page moves.
+  useEffect(() => {
+    if (!open) return;
+    const close = () => setOpen(false);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    return () => {
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
+    };
+  }, [open]);
+
+  return (
+    <>
+      <button
+        ref={btnRef}
+        onClick={toggle}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        className="rounded px-2 py-1 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+        aria-label="Actions"
+      >
+        ⋯
+      </button>
+      {open && (
+        <div
+          style={{ position: "fixed", top: pos.top, right: pos.right }}
+          className={cn(
+            "z-40 rounded-md border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-700 dark:bg-slate-800",
+            width,
+          )}
+        >
+          {items.map(([kind, label]) => (
+            <button
+              key={kind}
+              onClick={() => onSelect(kind)}
+              className={cn(
+                "block w-full px-3 py-1.5 text-left text-sm hover:bg-slate-100 dark:hover:bg-slate-700",
+                kind === "delete" ? "text-red-600 dark:text-red-400" : "text-slate-700 dark:text-slate-200",
+              )}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
 // ---- tables ----
 
 export function Table({ head, children }: { head: ReactNode; children: ReactNode }) {

@@ -74,6 +74,15 @@ CREATE TABLE IF NOT EXISTS kv (
   k TEXT PRIMARY KEY,
   v TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS acl_rule_meta (
+  fingerprint TEXT PRIMARY KEY,           -- sha256 of the canonical rule JSON
+  name        TEXT NOT NULL DEFAULT '',
+  description TEXT NOT NULL DEFAULT '',
+  enabled     INTEGER NOT NULL DEFAULT 1, -- 0 = removed from the live policy, kept here
+  rule_json   TEXT NOT NULL DEFAULT '',   -- canonical rule JSON (needed to re-enable)
+  position    INTEGER NOT NULL DEFAULT 0, -- index in the combined enabled+disabled list
+  updated_at  INTEGER NOT NULL
+);
 `
 
 // Open opens (creating if needed) the database in dataDir.

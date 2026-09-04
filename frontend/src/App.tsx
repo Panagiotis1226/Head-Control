@@ -5,6 +5,7 @@ import { get, onSessionExpired, setCsrfToken } from "./api/client";
 import { Layout } from "./components/Layout";
 import { ToastProvider } from "./components/ui";
 import { AclPage } from "./pages/AclPage";
+import { AclsBetaPage } from "./pages/acls/AclsBetaPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { DnsPage } from "./pages/DnsPage";
 import { KeysPage } from "./pages/KeysPage";
@@ -81,6 +82,7 @@ export default function App() {
                 <Route path="/machines/:id" element={<MachinesPage />} />
                 <Route path="/users" element={<UsersPage />} />
                 <Route path="/acl" element={<AclPage />} />
+                <Route path="/acls-beta" element={<AclsBetaPage />} />
                 <Route path="/routes" element={<RoutesPage />} />
                 <Route path="/keys" element={<KeysPage />} />
                 <Route path="/dns" element={<DnsPage />} />

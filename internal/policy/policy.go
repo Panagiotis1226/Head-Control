@@ -54,6 +54,8 @@ type Manager struct {
 
 	mu   sync.Mutex
 	mode Mode // resolved or learned
+
+	modelMu sync.Mutex // serializes structured (ACLs Beta) read-patch-save cycles
 }
 
 // New builds a Manager. configuredMode is POLICY_MODE ("auto"/"database"/"file").

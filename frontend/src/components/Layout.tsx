@@ -7,11 +7,13 @@ import { useMeta } from "../api/queries";
 import { post } from "../api/client";
 import { Badge, cn } from "./ui";
 
-const NAV = [
+const NAV: Array<{ to: string; label: string; icon: string; hideOnMobile?: boolean }> = [
   { to: "/", label: "Dashboard", icon: "▦" },
   { to: "/machines", label: "Machines", icon: "🖥" },
   { to: "/users", label: "Users", icon: "👤" },
   { to: "/acl", label: "Access Controls", icon: "🛡" },
+  // Structured ACL editor; reachable from Access Controls on small screens.
+  { to: "/acls-beta", label: "ACLs Beta", icon: "🧪", hideOnMobile: true },
   { to: "/routes", label: "Routes", icon: "⇄" },
   { to: "/keys", label: "Keys", icon: "🔑" },
   { to: "/dns", label: "DNS", icon: "◎" },
@@ -165,7 +167,9 @@ export function Layout({ children }: { children: ReactNode }) {
 
         {/* Mobile bottom nav */}
         <nav className="sticky bottom-0 z-30 flex justify-around border-t border-slate-200 bg-white py-1.5 dark:border-slate-800 dark:bg-slate-900 md:hidden">
-          {NAV.slice(0, 5).map((item) => (
+          {NAV.filter((item) => !item.hideOnMobile)
+            .slice(0, 5)
+            .map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
