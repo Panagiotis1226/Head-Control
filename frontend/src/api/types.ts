@@ -146,6 +146,55 @@ export interface PolicyVersion {
   comment?: string;
 }
 
+// ---- ACLs Beta structured model ----
+
+export interface PolicyModelRule {
+  id: string; // content fingerprint
+  action: "accept";
+  proto?: string;
+  src: string[];
+  dst: string[];
+  name: string;
+  description: string;
+  enabled: boolean;
+}
+
+export interface PolicyModel {
+  hash: string;
+  mode: PolicyState["mode"];
+  writable: boolean;
+  reloadPending: boolean;
+  updatedAt?: string;
+  groups: Record<string, string[]>;
+  tagOwners: Record<string, string[]>;
+  hosts: Record<string, string>;
+  rules: PolicyModelRule[];
+  otherSections: string[];
+}
+
+export interface PolicyModelSaveRule {
+  action: "accept";
+  proto?: string;
+  src: string[];
+  dst: string[];
+  name: string;
+  description: string;
+  enabled: boolean;
+}
+
+export interface PolicyModelSave {
+  baseHash: string;
+  comment?: string;
+  groups: Record<string, string[]>;
+  tagOwners: Record<string, string[]>;
+  hosts: Record<string, string>;
+  rules: PolicyModelSaveRule[];
+}
+
+export interface PolicyModelSaveResult extends PolicySaveResult {
+  policyChanged: boolean;
+}
+
 export interface DnsRecord {
   name: string;
   type: "A" | "AAAA";
@@ -192,6 +241,6 @@ export interface ApiErrorBody {
   };
   // 409 route conflicts also carry the fresh node:
   node?: Node;
-  // DNS conflicts carry the current file state:
-  current?: { records: DnsRecord[]; hash: string };
+  // DNS conflicts carry the current file state; policy-model conflicts the current model:
+  current?: { records: DnsRecord[]; hash: string } | PolicyModel;
 }

@@ -17,6 +17,9 @@ Tailscale control-plane experience, for your own coordination server.
   UI — machines, users, routes, pre-auth keys, API keys, policy, registration approval, health.
 - **ACL editing in both policy modes.** `database` mode saves through the API; `file` mode writes
   the mounted policy file atomically and reloads headscale via an opt-in Docker integration.
+- **ACLs Beta: a visual policy editor.** Rules, groups, tag owners and hosts as forms and chips
+  instead of JSON, with named/disable-able rules. Saves are applied as a minimal patch on the
+  HuJSON document, so hand-written comments survive; everything else stays in the raw editor.
 - **Honest about limits.** Where headscale has no server-side support (webhooks, user roles,
   tailnet lock, …), the UI says so instead of pretending.
 
@@ -144,6 +147,22 @@ diff and rollback. Rollback loads a version into the editor; nothing applies wit
 
 ![ACL editor in database mode with version history and headscale 0.29 policy hints](docs/screenshots/acl-editor.png)
 
+### ACLs Beta (structured editor)
+
+**ACLs Beta** is a second tab next to Access Controls for the common day-to-day edits: a list of
+rules (sources → destinations, protocol, ports) with an enable switch, plus tables for groups, tag
+owners and hosts. Pickers suggest users, groups, tags (flagging tags assigned to devices but not
+declared), hosts and autogroups. Changes accumulate in a draft and are applied in one reviewed save.
+
+- Rule **names, descriptions and the disabled state are UI-local** — headscale's format has none —
+  and live in Head-Control's database. A disabled rule is removed from the live policy and restored
+  when re-enabled.
+- Saves go through `PUT /api/policy/model`, which patches the HuJSON document rather than rewriting
+  it: untouched rules, sections (`grants`, `ssh`, `autoApprovers`, …) and **comments are preserved**.
+  Validation by headscale, mode handling and version history are the same as the raw editor.
+- Concurrent edits are detected (`baseHash`); on a conflict you can reload or re-apply your draft on
+  the newer version.
+
 ## Feature parity vs. the Tailscale admin console
 
 | Tailscale console | Head-Control | Notes |
@@ -155,6 +174,7 @@ diff and rollback. Rollback loads a version into the editor; nothing applies wit
 | Device approval queue | ⚠️ partial | headscale 0.29 has approve/reject/register APIs but **no pending-list endpoint** — codes are pasted in; pre-auth-key joins bypass approval |
 | Users CRUD | ✅ | roles/invites/suspend/SCIM don't exist in headscale |
 | ACL editor + syntax check + tests | ✅ | server-side validation incl. `tests`/`sshTests` |
+| Visual ACL editor (rules, groups, tags, hosts) | ✅ beta | comment-preserving HuJSON patching; rule names/disable are UI-local |
 | Policy version history + rollback | ✅ (UI-local) | headscale keeps no history; Head-Control snapshots every observed change |
 | Auth keys / API keys | ✅ | show-once secrets; self-lockout guard when rotating the UI's own key |
 | DNS: nameservers, MagicDNS, split DNS | 👁 display-only | no DNS API in headscale — config.yaml only (mount it for display) |
