@@ -497,7 +497,8 @@ func TestPolicyModelRoundTrip(t *testing.T) {
 	env.login()
 
 	m := env.getModel()
-	if len(m.Rules) != 2 || len(m.Groups) != 1 || len(m.OtherSections) != 1 || m.OtherSections[0] != "ssh" {
+	// ssh is an editable section now, so nothing is left over.
+	if len(m.Rules) != 2 || len(m.Groups) != 1 || len(m.OtherSections) != 0 {
 		t.Fatalf("unexpected model: %+v", m)
 	}
 	if m.Rules[0].ID == "" || !m.Rules[0].Enabled || m.Hash == "" || len(m.TagOwners) != 0 || len(m.Hosts) != 0 {
@@ -722,5 +723,98 @@ func TestPolicyModelMixedCaseKeys(t *testing.T) {
 	live := env.fakePolicy()
 	if strings.Contains(live, `"acls"`) || strings.Count(live, `"ACLs"`) != 1 || !strings.Contains(live, `"group:eng:22"`) {
 		t.Fatalf("expected the rule appended under the existing ACLs key:\n%s", live)
+	}
+}
+
+// The structured editor reads and writes every policy section, and leaves
+// "#" metadata members (ignored by headscale >= 0.29.4) in place.
+func TestPolicyModelAllSections(t *testing.T) {
+	env := newTestEnv(t, nil)
+	env.fake.Mu.Lock()
+	env.fake.Policy = `{
+  "#owner": "ops",
+  "ACLs": [
+    {"Action": "accept", "src": ["*"], "dst": ["*:*"]},
+  ],
+  "nodeAttrs": [
+    { "target": ["*"], "attr": ["drive:share", "drive:access"] },
+  ],
+  "grants": [
+    {"src": ["*"], "dst": ["*"], "app": {"tailscale.com/cap/drive": [{"shares": ["*"], "access": "rw"}]}},
+  ],
+}`
+	env.fake.Mu.Unlock()
+	env.login()
+
+	type state struct {
+		Hash                string              `json:"hash"`
+		Rules               []modelRuleJSON     `json:"rules"`
+		Grants              []json.RawMessage   `json:"grants"`
+		SSH                 []json.RawMessage   `json:"ssh"`
+		NodeAttrs           []json.RawMessage   `json:"nodeAttrs"`
+		Tests               []json.RawMessage   `json:"tests"`
+		SSHTests            []json.RawMessage   `json:"sshTests"`
+		AutoApprovers       map[string]any      `json:"autoApprovers"`
+		RandomizeClientPort bool                `json:"randomizeClientPort"`
+		OtherSections       []string            `json:"otherSections"`
+		Groups              map[string][]string `json:"groups"`
+	}
+	resp := env.do("GET", "/api/policy/model", nil, false)
+	st := decode[state](t, resp)
+	if len(st.NodeAttrs) != 1 || len(st.Grants) != 1 || len(st.SSH) != 0 || len(st.OtherSections) != 0 || st.Tests == nil {
+		t.Fatalf("unexpected model: %+v", st)
+	}
+	if string(st.NodeAttrs[0]) != `{"attr":["drive:share","drive:access"],"target":["*"]}` {
+		t.Fatalf("nodeAttr not canonical: %s", st.NodeAttrs[0])
+	}
+
+	rules := []map[string]any{}
+	for _, r := range st.Rules {
+		rules = append(rules, map[string]any{"action": r.Action, "src": r.Src, "dst": r.Dst, "name": r.Name, "description": r.Description, "enabled": r.Enabled})
+	}
+	body := map[string]any{
+		"baseHash": st.Hash, "groups": map[string][]string{}, "tagOwners": map[string][]string{}, "hosts": map[string]string{},
+		"rules":     rules,
+		"grants":    st.Grants,
+		"nodeAttrs": []json.RawMessage{st.NodeAttrs[0], json.RawMessage(`{"target":["*"],"attr":["magicdns-aaaa"]}`)},
+		"ssh":       []json.RawMessage{json.RawMessage(`{"action":"accept","src":["autogroup:member"],"dst":["autogroup:self"],"users":["autogroup:nonroot"]}`)},
+		"tests":     []json.RawMessage{},
+		"sshTests":  []json.RawMessage{},
+		"autoApprovers": map[string]any{
+			"routes":   map[string][]string{"10.0.0.0/24": {"tag:router"}},
+			"exitNode": []string{"tag:exit"},
+		},
+		"randomizeClientPort": true,
+	}
+	resp = env.do("PUT", "/api/policy/model", body, true)
+	if resp.StatusCode != 200 {
+		b, _ := io.ReadAll(resp.Body)
+		t.Fatalf("save failed: %d %s", resp.StatusCode, b)
+	}
+	resp.Body.Close()
+
+	live := env.fakePolicy()
+	for _, want := range []string{
+		`"#owner": "ops"`, `"tailscale.com/cap/drive"`, `"magicdns-aaaa"`,
+		`"autogroup:nonroot"`, `"10.0.0.0/24": ["tag:router"]`, `"randomizeClientPort": true`,
+	} {
+		if !strings.Contains(live, want) {
+			t.Fatalf("live policy missing %s:\n%s", want, live)
+		}
+	}
+	st2 := decode[state](t, env.do("GET", "/api/policy/model", nil, false))
+	if len(st2.NodeAttrs) != 2 || len(st2.SSH) != 1 || !st2.RandomizeClientPort {
+		t.Fatalf("round trip wrong: %+v", st2)
+	}
+
+	// A request that omits the new sections leaves them untouched (older UIs).
+	resp = env.do("PUT", "/api/policy/model", map[string]any{"baseHash": st2.Hash, "groups": map[string][]string{"group:eng": {"alice@"}}}, true)
+	if resp.StatusCode != 200 {
+		b, _ := io.ReadAll(resp.Body)
+		t.Fatalf("partial save failed: %d %s", resp.StatusCode, b)
+	}
+	resp.Body.Close()
+	if live2 := env.fakePolicy(); !strings.Contains(live2, `"magicdns-aaaa"`) || !strings.Contains(live2, `"randomizeClientPort": true`) {
+		t.Fatalf("omitted sections were changed:\n%s", live2)
 	}
 }

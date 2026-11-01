@@ -6,6 +6,23 @@ All notable changes to Head-Control are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.3] — 2026-11-01
+
+### Added
+- ACLs Beta edits the whole policy: collapsible sections under the rules for grants (including
+  app capabilities and `via`), SSH rules, node attributes, auto-approved routes and exit nodes,
+  policy tests, SSH tests and `randomizeClientPort`. Entries are patched one by one, so untouched
+  ones keep their comments, and unknown fields are carried over. Renaming a group or host also
+  updates these sections.
+
+### Changed
+- Tested against headscale v0.29.7 (REST API unchanged since v0.29.3); the CI smoke test now runs
+  a real v0.29.7.
+
+### Fixed
+- ACLs Beta refused policies containing `#`-prefixed metadata keys outside `acls` rules (allowed
+  since headscale v0.29.4); they are now ignored by the editor and preserved on save.
+
 ## [0.1.2] — 2026-09-04
 
 ### Added
@@ -64,7 +81,8 @@ Initial release.
 - Contract test pinned to headscale v0.29.3's OpenAPI spec; CI smoke test against a real
   headscale.
 
-[Unreleased]: https://github.com/Panagiotis1226/Head-Control/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/Panagiotis1226/Head-Control/compare/v0.1.3...HEAD
+[0.1.3]: https://github.com/Panagiotis1226/Head-Control/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/Panagiotis1226/Head-Control/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/Panagiotis1226/Head-Control/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/Panagiotis1226/Head-Control/releases/tag/v0.1.0

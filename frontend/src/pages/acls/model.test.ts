@@ -2,6 +2,12 @@ import { describe, expect, it } from "vitest";
 import type { PolicyModel } from "../../api/types";
 import {
   buildOptions,
+  canonical,
+  getList,
+  setField,
+  validateCheckPeriod,
+  validateGrantIp,
+  validateTestTarget,
   diffDraft,
   draftFromModel,
   draftReducer,
@@ -39,7 +45,14 @@ const server: PolicyModel = {
     { id: "r1", action: "accept", src: ["group:eng"], dst: ["tag:web:443"], name: "Eng to web", description: "", enabled: true },
     { id: "r2", action: "accept", proto: "tcp", src: ["tag:web"], dst: ["db1:5432"], name: "", description: "", enabled: true },
   ],
-  otherSections: ["ssh"],
+  grants: [],
+  ssh: [],
+  nodeAttrs: [],
+  tests: [],
+  sshTests: [],
+  autoApprovers: { routes: {}, exitNode: [] },
+  randomizeClientPort: false,
+  otherSections: [],
 };
 
 describe("splitDst / joinDst", () => {
@@ -265,5 +278,106 @@ describe("rebaseDraft", () => {
     expect(ids).toContain("r3"); // server addition adopted
     expect(r.rules.filter((x) => !x.serverId).map((x) => x.name).sort()).toEqual(["", "renamed"]); // orphaned edit + new rule
     expect(diffDraft(newer, r).count).toBe(4);
+  });
+});
+
+// ---- other policy sections ----
+
+const full: PolicyModel = {
+  ...server,
+  hash: "f1",
+  grants: [{ src: ["*"], dst: ["*"], app: { "tailscale.com/cap/drive": [{ shares: ["*"], access: "rw" }] } }],
+  nodeAttrs: [{ target: ["group:eng"], attr: ["drive:share"] }],
+  ssh: [{ Action: "accept", src: ["group:eng"], dst: ["tag:web"], users: ["root"], "#note": "keep" }],
+  tests: [],
+  sshTests: [],
+  autoApprovers: { routes: { "10.0.0.0/24": ["group:eng"] }, exitNode: ["tag:exit"] },
+  randomizeClientPort: false,
+};
+
+describe("element helpers", () => {
+  it("canonical ignores key order", () => {
+    expect(canonical({ b: 1, a: [2, { d: 1, c: 2 }] })).toBe(canonical({ a: [2, { c: 2, d: 1 }], b: 1 }));
+  });
+  it("setField keeps the document's spelling and unknown members", () => {
+    const v = setField(full.ssh[0], "action", "check");
+    expect(v).toEqual({ Action: "check", src: ["group:eng"], dst: ["tag:web"], users: ["root"], "#note": "keep" });
+    expect(setField(v, "users", [])).not.toHaveProperty("users");
+    expect(getList({ Src: "alice@" }, "src")).toEqual(["alice@"]);
+  });
+});
+
+describe("other sections in the draft", () => {
+  it("starts clean and tracks edits per section", () => {
+    let d = draftFromModel(full);
+    expect(diffDraft(full, d).count).toBe(0);
+    d = draftReducer(d, { type: "setExtra", list: "nodeAttrs", value: { target: ["*"], attr: ["magicdns-aaaa"] } });
+    d = draftReducer(d, { type: "setExtra", list: "ssh", key: d.extras.ssh[0].key, value: setField(d.extras.ssh[0].value, "users", ["autogroup:nonroot"]) });
+    d = draftReducer(d, { type: "deleteExtra", list: "grants", key: d.extras.grants[0].key });
+    d = draftReducer(d, { type: "setRoute", prefix: "10.1.0.0/16", owners: ["tag:r"] });
+    d = draftReducer(d, { type: "setExitNode", owners: [] });
+    d = draftReducer(d, { type: "setRandomize", value: true });
+    const s = diffDraft(full, d);
+    expect(s.extras.nodeAttrs).toEqual({ added: 1, removed: 0, changed: 0 });
+    expect(s.extras.ssh).toEqual({ added: 0, removed: 0, changed: 1 });
+    expect(s.extras.grants).toEqual({ added: 0, removed: 1, changed: 0 });
+    expect(s.routes.added).toEqual(["10.1.0.0/16"]);
+    expect(s.exitNodeChanged && s.randomizeChanged).toBe(true);
+    expect(s.count).toBe(6);
+
+    const body = toSaveBody(d);
+    expect(body.grants).toEqual([]);
+    expect(body.nodeAttrs).toHaveLength(2);
+    expect(body.ssh[0]).toMatchObject({ Action: "accept", users: ["autogroup:nonroot"], "#note": "keep" });
+    expect(body.autoApprovers).toEqual({ routes: { "10.0.0.0/24": ["group:eng"], "10.1.0.0/16": ["tag:r"] }, exitNode: [] });
+    expect(body.randomizeClientPort).toBe(true);
+  });
+
+  it("renaming a group rewrites the other sections but not app payloads", () => {
+    let d = draftFromModel(full);
+    d = draftReducer(d, { type: "renameKey", section: "groups", from: "group:eng", to: "group:dev" });
+    expect(d.extras.nodeAttrs[0].value).toEqual({ target: ["group:dev"], attr: ["drive:share"] });
+    expect(d.extras.ssh[0].value).toMatchObject({ src: ["group:dev"] });
+    expect(d.autoApprovers.routes["10.0.0.0/24"]).toEqual(["group:dev"]);
+    expect(d.extras.grants[0].value).toEqual(full.grants[0]);
+    expect(referencesOf(draftFromModel(full), "group:eng").filter((r) => r.kind === "policy")).toHaveLength(3);
+  });
+
+  it("rebases edits onto a newer server version", () => {
+    let d = draftFromModel(full);
+    d = draftReducer(d, { type: "setExtra", list: "nodeAttrs", key: d.extras.nodeAttrs[0].key, value: { target: ["group:eng"], attr: ["drive:share", "drive:access"] } });
+    d = draftReducer(d, { type: "setExtra", list: "tests", value: { src: "alice@", accept: ["tag:web:443"] } });
+    const summary = diffDraft(full, d);
+    const newer: PolicyModel = {
+      ...full,
+      hash: "f2",
+      nodeAttrs: [{ target: ["*"], attr: ["magicdns-aaaa"] }, ...full.nodeAttrs], // someone else added one
+      grants: [], // and removed the grant
+      randomizeClientPort: true,
+    };
+    const r = rebaseDraft(d, newer, summary);
+    expect(r.base).toBe(newer);
+    expect(r.extras.nodeAttrs.map((i) => i.value)).toEqual([{ target: ["*"], attr: ["magicdns-aaaa"] }, { target: ["group:eng"], attr: ["drive:share", "drive:access"] }]);
+    expect(r.extras.grants).toEqual([]); // untouched section follows the server
+    expect(r.extras.tests.map((i) => i.value)).toEqual([{ src: "alice@", accept: ["tag:web:443"] }]);
+    expect(r.randomizeClientPort).toBe(true);
+    const after = diffDraft(newer, r);
+    expect(after.extras.nodeAttrs).toEqual({ added: 0, removed: 0, changed: 1 });
+    expect(after.extras.tests.added).toBe(1);
+  });
+});
+
+describe("section validators", () => {
+  it("grant ip entries", () => {
+    for (const ok of ["*", "443", "22,80-90", "tcp:443", "udp:53", "icmp:*", "6:443"]) expect(validateGrantIp(ok), ok).toBeNull();
+    for (const bad of ["quic:443", "tcp:", "tcp:70000", "a:b:c"]) expect(validateGrantIp(bad)?.level, bad).toBe("error");
+  });
+  it("ssh check periods", () => {
+    for (const ok of ["", "always", "12h", "30m", "1h30m", "168h"]) expect(validateCheckPeriod(ok), ok).toBeNull();
+    for (const bad of ["12", "1d", "169h", "soon"]) expect(validateCheckPeriod(bad)?.level, bad).toBe("error");
+  });
+  it("test targets need a port", () => {
+    expect(validateTestTarget("tag:web:443")).toBeNull();
+    expect(validateTestTarget("tag:web")?.level).toBe("error");
   });
 });

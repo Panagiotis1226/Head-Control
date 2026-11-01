@@ -159,6 +159,14 @@ export interface PolicyModelRule {
   enabled: boolean;
 }
 
+/** A grants / ssh / nodeAttrs / tests / sshTests entry, kept as raw JSON. */
+export type PolicyElement = Record<string, unknown>;
+
+export interface PolicyAutoApprovers {
+  routes: Record<string, string[]>;
+  exitNode: string[];
+}
+
 export interface PolicyModel {
   hash: string;
   mode: PolicyState["mode"];
@@ -169,6 +177,13 @@ export interface PolicyModel {
   tagOwners: Record<string, string[]>;
   hosts: Record<string, string>;
   rules: PolicyModelRule[];
+  grants: PolicyElement[];
+  ssh: PolicyElement[];
+  nodeAttrs: PolicyElement[];
+  tests: PolicyElement[];
+  sshTests: PolicyElement[];
+  autoApprovers: PolicyAutoApprovers;
+  randomizeClientPort: boolean;
   otherSections: string[];
 }
 
@@ -189,6 +204,13 @@ export interface PolicyModelSave {
   tagOwners: Record<string, string[]>;
   hosts: Record<string, string>;
   rules: PolicyModelSaveRule[];
+  grants: PolicyElement[];
+  ssh: PolicyElement[];
+  nodeAttrs: PolicyElement[];
+  tests: PolicyElement[];
+  sshTests: PolicyElement[];
+  autoApprovers: PolicyAutoApprovers;
+  randomizeClientPort: boolean;
 }
 
 export interface PolicyModelSaveResult extends PolicySaveResult {

@@ -40,9 +40,11 @@ function UsedBy({ refs }: { refs: Reference[] }) {
   if (refs.length === 0) return <span className="text-xs text-slate-400">unused</span>;
   const rules = refs.filter((r) => r.kind === "rule").length;
   const owners = refs.filter((r) => r.kind === "tagOwner").length;
+  const policy = refs.filter((r) => r.kind === "policy").length;
   const parts = [];
   if (rules) parts.push(`${rules} rule${rules === 1 ? "" : "s"}`);
   if (owners) parts.push(`${owners} tag owner${owners === 1 ? "" : "s"}`);
+  if (policy) parts.push(`${policy} other`);
   return (
     <span className="text-xs text-slate-500" title={refs.map((r) => r.label).join("\n")}>
       {parts.join(", ")}

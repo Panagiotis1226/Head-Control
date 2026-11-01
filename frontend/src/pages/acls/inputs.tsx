@@ -41,16 +41,18 @@ export function SelectorChip({
   hosts,
   suffix,
   warn,
+  tone,
   onRemove,
 }: {
   value: string;
   hosts?: Record<string, string>;
   suffix?: string;
   warn?: string;
+  tone?: Tone; // overrides the colour derived from the selector kind
   onRemove?: () => void;
 }) {
   return (
-    <Badge tone={kindTone(classify(value, hosts))} title={warn}>
+    <Badge tone={tone ?? kindTone(classify(value, hosts))} title={warn}>
       {warn && <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-amber-500" aria-label="warning" />}
       <span className="font-mono">{value}</span>
       {suffix !== undefined && <span className="ml-0.5 font-mono opacity-60">:{suffix}</span>}
@@ -72,6 +74,7 @@ export function SelectorPicker({
   placeholder,
   autoFocus,
   disabled,
+  freeText,
 }: {
   value: string[];
   onChange: (next: string[]) => void;
@@ -81,6 +84,8 @@ export function SelectorPicker({
   placeholder?: string;
   autoFocus?: boolean;
   disabled?: boolean;
+  /** Plain values (users, attributes, host:port): neutral chips, no port stripping. */
+  freeText?: boolean;
 }) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
@@ -117,7 +122,7 @@ export function SelectorPicker({
     if (/^(tag|group|autogroup):/i.test(s)) s = s.toLowerCase();
     // A pasted "selector:ports" destination: keep the selector, point at the Ports field.
     let hint: Issue | null = null;
-    if (s.includes(":")) {
+    if (!freeText && s.includes(":")) {
       const { selector, ports, error } = splitDst(s);
       if (!error && ports && classify(selector, hosts) !== "unknown") {
         s = selector;
@@ -199,6 +204,7 @@ export function SelectorPicker({
               key={v}
               value={v}
               hosts={hosts}
+              tone={freeText ? "gray" : undefined}
               warn={opt?.warn ?? (issue ? issue.text : undefined)}
               onRemove={disabled ? undefined : () => onChange(value.filter((x) => x !== v))}
             />
@@ -232,7 +238,9 @@ export function SelectorPicker({
         >
           {groups.map((g) => (
             <li key={g.kind}>
-              <p className="px-3 pb-0.5 pt-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">{KIND_LABEL[g.kind]}</p>
+              <p className="px-3 pb-0.5 pt-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                {freeText ? "Suggestions" : KIND_LABEL[g.kind]}
+              </p>
               <ul>
                 {g.items.map(({ o, idx }) => (
                   <li
@@ -250,7 +258,7 @@ export function SelectorPicker({
                     )}
                   >
                     <span className="flex items-center gap-2">
-                      <span className={cn("inline-block h-2 w-2 rounded-full", dotClass(o.kind))} />
+                      <span className={cn("inline-block h-2 w-2 rounded-full", freeText ? "bg-slate-400" : dotClass(o.kind))} />
                       <span className="font-mono text-slate-800 dark:text-slate-100">{o.value}</span>
                     </span>
                     <span className={cn("truncate text-xs", o.warn ? "text-amber-600 dark:text-amber-300" : "text-slate-400")}>
@@ -272,7 +280,7 @@ export function SelectorPicker({
               className="cursor-pointer border-t border-slate-100 px-3 py-1.5 text-slate-600 dark:border-slate-800 dark:text-slate-300"
             >
               Add <span className="font-mono">{query.trim()}</span>
-              <span className="ml-2 text-xs text-slate-400">user@, group:, tag:, host, IP or CIDR</span>
+              {!freeText && <span className="ml-2 text-xs text-slate-400">user@, group:, tag:, host, IP or CIDR</span>}
             </li>
           )}
         </ul>

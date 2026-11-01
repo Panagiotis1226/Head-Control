@@ -34,7 +34,15 @@ type ModelState struct {
 	TagOwners     map[string][]string `json:"tagOwners"`
 	Hosts         map[string]string   `json:"hosts"`
 	Rules         []ModelRule         `json:"rules"`
-	OtherSections []string            `json:"otherSections"`
+	// List sections as canonical JSON objects, in document order.
+	Grants              []json.RawMessage      `json:"grants"`
+	SSH                 []json.RawMessage      `json:"ssh"`
+	NodeAttrs           []json.RawMessage      `json:"nodeAttrs"`
+	Tests               []json.RawMessage      `json:"tests"`
+	SSHTests            []json.RawMessage      `json:"sshTests"`
+	AutoApprovers       aclmodel.AutoApprovers `json:"autoApprovers"`
+	RandomizeClientPort bool                   `json:"randomizeClientPort"`
+	OtherSections       []string               `json:"otherSections"`
 }
 
 // ModelInput is the editor's save request.
@@ -118,16 +126,23 @@ func (m *Manager) modelState(st *State, doc *aclmodel.Document) *ModelState {
 	}
 
 	return &ModelState{
-		Hash:          store.HashContent(st.Policy),
-		Mode:          st.Mode,
-		Writable:      st.Writable,
-		ReloadPending: st.ReloadPending,
-		UpdatedAt:     st.UpdatedAt,
-		Groups:        doc.Model.Groups,
-		TagOwners:     doc.Model.TagOwners,
-		Hosts:         doc.Model.Hosts,
-		Rules:         rules,
-		OtherSections: doc.Other,
+		Hash:                store.HashContent(st.Policy),
+		Mode:                st.Mode,
+		Writable:            st.Writable,
+		ReloadPending:       st.ReloadPending,
+		UpdatedAt:           st.UpdatedAt,
+		Groups:              doc.Model.Groups,
+		TagOwners:           doc.Model.TagOwners,
+		Hosts:               doc.Model.Hosts,
+		Rules:               rules,
+		Grants:              rawList(doc.Model.Lists["grants"]),
+		SSH:                 rawList(doc.Model.Lists["ssh"]),
+		NodeAttrs:           rawList(doc.Model.Lists["nodeAttrs"]),
+		Tests:               rawList(doc.Model.Lists["tests"]),
+		SSHTests:            rawList(doc.Model.Lists["sshTests"]),
+		AutoApprovers:       doc.Model.AutoApprovers,
+		RandomizeClientPort: doc.Model.RandomizeClientPort != nil && *doc.Model.RandomizeClientPort,
+		OtherSections:       doc.Other,
 	}
 }
 
@@ -224,6 +239,15 @@ func metaRows(rules []aclmodel.InputRule) []store.RuleMeta {
 		}
 		seen[row.Fingerprint] = len(out)
 		out = append(out, row)
+	}
+	return out
+}
+
+// rawList turns canonical JSON strings into an always-non-nil JSON array.
+func rawList(items []string) []json.RawMessage {
+	out := make([]json.RawMessage, len(items))
+	for i, it := range items {
+		out[i] = json.RawMessage(it)
 	}
 	return out
 }
