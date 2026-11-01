@@ -1,18 +1,102 @@
 name: Release
 
+# Publishes a release in two ways:
+#
+#  - Automatically, on every push to main: the newest version heading in
+#    CHANGELOG.md (e.g. "## [0.1.3]") is released if its tag v0.1.3 does not
+#    exist yet. Merging a PR that cuts a new changelog version is all it
+#    takes; merges that don't add a version publish nothing.
+#  - Manually, by pushing a v* tag (as before).
+#
+# Either way: tests run, the image is built and pushed, then the tag and a
+# GitHub Release (notes = that changelog section) are created. Tags created by
+# this workflow use GITHUB_TOKEN, which does not trigger another run.
+
 on:
   push:
+    branches: [main]
     tags: ["v*"]
+  workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write # create the tag and the GitHub Release
   packages: write
   attestations: write
   id-token: write
 
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
-  release:
+  version:
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      prerelease: ${{ steps.v.outputs.prerelease }}
+      publish: ${{ steps.v.outputs.publish }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            version="${GITHUB_REF_NAME#v}"
+            publish=true
+          else
+            # Newest released version: the first "## [x.y.z...]" heading
+            # ("## [Unreleased]" is skipped because it does not start with a digit).
+            version=$(grep -m1 -oP '^## \[\K[0-9]+\.[0-9]+\.[0-9]+[^\]]*(?=\])' CHANGELOG.md || true)
+            if [ -z "$version" ]; then
+              echo "No version heading in CHANGELOG.md; nothing to release."
+              publish=false
+            elif git ls-remote --exit-code --tags origin "refs/tags/v$version" >/dev/null; then
+              echo "v$version is already released; nothing to do."
+              publish=false
+            else
+              echo "Releasing v$version."
+              publish=true
+            fi
+          fi
+          case "$version" in *-*) prerelease=true ;; *) prerelease=false ;; esac
+          {
+            echo "version=$version"
+            echo "prerelease=$prerelease"
+            echo "publish=$publish"
+          } >> "$GITHUB_OUTPUT"
+
+  test:
+    needs: version
+    if: needs.version.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go vet ./...
+      - run: go test -race ./...
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+        working-directory: frontend
+      - run: pnpm test
+        working-directory: frontend
+      - run: pnpm lint
+        working-directory: frontend
+
+  release:
+    needs: [version, test]
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      PRERELEASE: ${{ needs.version.outputs.prerelease }}
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-qemu-action@v3
@@ -26,16 +110,14 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/${{ github.repository_owner }}/head-control
-          # Pre-release tags (v0.1.2-dev, v0.2.0-rc1, ...) publish only their
-          # own version tag; latest and the compat alias track real releases.
+          # Pre-releases (0.1.2-dev, 0.2.0-rc1, ...) publish only their own
+          # version tag; latest and the compat alias track real releases.
           tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}},enable=${{ !contains(github.ref_name, '-') }}
-            type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
+            type=semver,pattern={{version}},value=v${{ env.VERSION }}
+            type=semver,pattern={{major}}.{{minor}},value=v${{ env.VERSION }},enable=${{ env.PRERELEASE == 'false' }}
+            type=raw,value=latest,enable=${{ env.PRERELEASE == 'false' }}
             # Compat alias: this release line targets headscale 0.29.x.
-            type=raw,value=hs-v0.29,enable=${{ !contains(github.ref_name, '-') }}
-      - id: version
-        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+            type=raw,value=hs-v0.29,enable=${{ env.PRERELEASE == 'false' }}
       - id: build
         uses: docker/build-push-action@v6
         with:
@@ -45,7 +127,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            VERSION=${{ steps.version.outputs.version }}
+            VERSION=${{ env.VERSION }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - uses: actions/attest-build-provenance@v2
@@ -53,3 +135,23 @@ jobs:
           subject-name: ghcr.io/${{ github.repository_owner }}/head-control
           subject-digest: ${{ steps.build.outputs.digest }}
           push-to-registry: true
+      - name: Tag and GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # Release notes: this version's CHANGELOG section, without its heading.
+          awk -v v="$VERSION" '
+            $0 ~ "^## \\[" { if (found) exit; if (index($0, "## [" v "]") == 1) { found = 1; next } }
+            found { print }
+          ' CHANGELOG.md > notes.md
+          [ -s notes.md ] || echo "See CHANGELOG.md." > notes.md
+          if gh release view "v$VERSION" >/dev/null 2>&1; then
+            echo "GitHub Release v$VERSION already exists."
+            exit 0
+          fi
+          flags=()
+          [ "$PRERELEASE" = "true" ] && flags+=(--prerelease)
+          # On a push to main this also creates the tag on the released commit.
+          gh release create "v$VERSION" --target "$GITHUB_SHA" --title "Head-Control $VERSION" \
+            --notes-file notes.md "${flags[@]}"

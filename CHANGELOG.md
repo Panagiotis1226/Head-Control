@@ -6,6 +6,10 @@ All notable changes to Head-Control are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- Releases publish themselves: merging a new `CHANGELOG.md` version to `main` builds the image,
+  tags the commit and creates the GitHub Release. Pushing a `v*` tag by hand still works.
+
 ## [0.1.3] — 2026-11-01
 
 ### Added
