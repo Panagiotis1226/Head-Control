@@ -14,11 +14,17 @@ import { PageHeader } from "../../components/Layout";
 import { ConfirmDialog, errorText } from "../../components/common";
 import { Badge, Button, Input, Modal, cn, useToast } from "../../components/ui";
 import { GroupsTab, HostsTab, TagOwnersTab } from "./DefinitionsTabs";
+import { PolicySections } from "./PolicySections";
 import { RulesTab } from "./RulesTab";
 import {
+  EXTRA_LABELS,
+  EXTRA_LISTS,
   diffDraft,
   draftReducer,
   emptyDraft,
+  emptySummary,
+  extraNoun,
+  listChangeCount,
   ruleLabel,
   splitDst,
   toSaveBody,
@@ -56,9 +62,7 @@ export function AclsBetaPage() {
   // latest poll — otherwise someone else's edit would show up as "yours".
   const summary = useMemo<ChangeSummary>(
     () =>
-      draft.base
-        ? diffDraft(draft.base, draft)
-        : { rules: { added: [], removed: [], changed: [] }, groups: emptyKeys(), tagOwners: emptyKeys(), hosts: emptyKeys(), count: 0 },
+      draft.base ? diffDraft(draft.base, draft) : emptySummary(),
     [draft],
   );
   const dirty = summary.count > 0;
@@ -114,7 +118,13 @@ export function AclsBetaPage() {
   };
 
   const tabDirty: Record<Tab, boolean> = {
-    rules: summary.rules.added.length + summary.rules.removed.length + summary.rules.changed.length > 0,
+    // The rules tab also holds the other policy sections.
+    rules:
+      summary.rules.added.length + summary.rules.removed.length + summary.rules.changed.length > 0 ||
+      EXTRA_LISTS.some((l) => listChangeCount(summary.extras[l]) > 0) ||
+      keyCount(summary.routes) > 0 ||
+      summary.exitNodeChanged ||
+      summary.randomizeChanged,
     groups: keyCount(summary.groups) > 0,
     tagOwners: keyCount(summary.tagOwners) > 0,
     hosts: keyCount(summary.hosts) > 0,
@@ -202,7 +212,12 @@ export function AclsBetaPage() {
             ))}
           </div>
 
-          {tab === "rules" && <RulesTab draft={draft} server={model} ctx={ctx} summary={summary} writable={writable} dispatch={dispatch} />}
+          {tab === "rules" && (
+            <>
+              <RulesTab draft={draft} server={model} ctx={ctx} summary={summary} writable={writable} dispatch={dispatch} />
+              <PolicySections draft={draft} ctx={ctx} summary={summary} writable={writable} dispatch={dispatch} />
+            </>
+          )}
           {tab === "groups" && <GroupsTab draft={draft} ctx={ctx} summary={summary} writable={writable} dispatch={dispatch} />}
           {tab === "tagOwners" && <TagOwnersTab draft={draft} ctx={ctx} summary={summary} writable={writable} dispatch={dispatch} />}
           {tab === "hosts" && <HostsTab draft={draft} ctx={ctx} summary={summary} writable={writable} dispatch={dispatch} />}
@@ -308,10 +323,6 @@ export function AclsBetaPage() {
 
 // ---- bits ----
 
-function emptyKeys(): KeyChanges {
-  return { added: [], removed: [], changed: [] };
-}
-
 function keyCount(k: KeyChanges): number {
   return k.added.length + k.removed.length + k.changed.length;
 }
@@ -324,6 +335,13 @@ function describeSummary(s: ChangeSummary): string {
     const n = keyCount(k);
     if (n) parts.push(`${n} ${label}`);
   }
+  for (const l of EXTRA_LISTS) {
+    const n = listChangeCount(s.extras[l]);
+    if (n) parts.push(`${n} ${extraNoun(l)}${n === 1 ? "" : "s"}`);
+  }
+  const aa = keyCount(s.routes) + (s.exitNodeChanged ? 1 : 0);
+  if (aa) parts.push(`${aa} auto-approver${aa === 1 ? "" : "s"}`);
+  if (s.randomizeChanged) parts.push("options");
   return parts.join(" · ");
 }
 
@@ -363,6 +381,26 @@ function SummaryList({ summary }: { summary: ChangeSummary }) {
     const items = [...k.added.map((x) => line("+", x, "a" + x)), ...k.changed.map((x) => line("~", x, "c" + x)), ...k.removed.map((x) => line("−", x, "r" + x))];
     if (items.length) sections.push({ title, items });
   }
+  for (const l of EXTRA_LISTS) {
+    const c = summary.extras[l];
+    const noun = extraNoun(l);
+    const plural = (n: number) => `${n} ${noun}${n === 1 ? "" : "s"}`;
+    const items = [
+      c.added ? line("+", `${plural(c.added)} added`, "a") : null,
+      c.changed ? line("~", `${plural(c.changed)} edited`, "c") : null,
+      c.removed ? line("−", `${plural(c.removed)} removed`, "r") : null,
+    ].filter(Boolean);
+    if (items.length) sections.push({ title: `${EXTRA_LABELS[l]}s`, items });
+  }
+  const r = summary.routes;
+  const aa = [
+    ...r.added.map((x) => line("+", `route ${x}`, "a" + x)),
+    ...r.changed.map((x) => line("~", `route ${x}`, "c" + x)),
+    ...r.removed.map((x) => line("−", `route ${x}`, "r" + x)),
+    ...(summary.exitNodeChanged ? [line("~", "exit node approvers", "exit")] : []),
+  ];
+  if (aa.length) sections.push({ title: "Auto approvers", items: aa });
+  if (summary.randomizeChanged) sections.push({ title: "Options", items: [line("~", "randomize client port", "rcp")] });
 
   return (
     <div className="space-y-3">

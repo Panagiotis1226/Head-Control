@@ -55,7 +55,7 @@ jobs:
           tags: head-control:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
-      - name: Smoke test against real headscale v0.29.3
+      - name: Smoke test against real headscale v0.29.7
         run: |
           set -euo pipefail
           docker network create hcnet
@@ -99,7 +99,7 @@ jobs:
           EOF
 
           docker run -d --name headscale --network hcnet \
-            -v /tmp/hs:/etc/headscale headscale/headscale:v0.29.3 serve
+            -v /tmp/hs:/etc/headscale headscale/headscale:v0.29.7 serve
           for i in $(seq 1 30); do
             docker exec headscale headscale users list >/dev/null 2>&1 && break
             sleep 1

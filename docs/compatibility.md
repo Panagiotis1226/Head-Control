@@ -2,7 +2,7 @@
 
 | Head-Control | Headscale | Status |
 |---|---|---|
-| 1.x (`hs-v0.29` image tag) | v0.29.0 – v0.29.3 | ✅ supported; developed and tested against v0.29.3 |
+| 1.x (`hs-v0.29` image tag) | v0.29.0 – v0.29.7 | ✅ supported; tested against v0.29.7 |
 | — | ≤ v0.28 | ❌ unsupported — different node/tag/pre-auth-key APIs (0.26 removed the routes API; 0.28 removed move-node and reshaped tags/keys) |
 | future 2.x | v0.30+ | planned — 0.30 removes gRPC, switches errors to RFC 7807 and the spec to OpenAPI 3.1 |
 
@@ -13,8 +13,12 @@ operations may still work partially, but no guarantees.
 
 Headscale's API has changed incompatibly in most minor releases, which is why most third-party UIs
 broke at 0.26 and again at 0.28. Head-Control pins the exact v0.29.3 OpenAPI contract in
-`testdata/headscale-v0.29.3.swagger.json`; a contract test fails the build if the client and spec
-drift, and every endpoint's behavior is exercised in CI against a real headscale v0.29.3 container.
+`testdata/headscale-v0.29.3.swagger.json` (the spec is byte-identical through v0.29.7); a contract
+test fails the build if the client and spec drift, and CI exercises the image against a real
+headscale v0.29.7 container.
+
+Since v0.29.4 headscale ignores `#`-prefixed keys anywhere in a policy (policy editors keep notes
+in them). ACLs Beta loads such policies and leaves those keys untouched when it saves.
 
 ## Verified-against-live-server notes (v0.29.3)
 
