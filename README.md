@@ -202,6 +202,15 @@ docker build -t head-control:dev .
 The repository pins headscale's v0.29.3 OpenAPI spec at `testdata/headscale-v0.29.3.swagger.json`;
 a contract test fails if the client and spec ever drift.
 
+### Releases
+
+Every push to `dev` publishes `ghcr.io/panagiotis1226/head-control:dev`. To release, add a version
+section to `CHANGELOG.md` (e.g. `## [0.1.4] — 2026-12-01`) and merge to `main`: the Release
+workflow notices the new version, runs the tests, publishes the image (`0.1.4`, `0.1`, `latest`,
+`hs-v0.29`), and creates the `v0.1.4` tag and GitHub Release from that changelog section. Merges
+that don't add a version publish nothing. Versions with a suffix (`0.2.0-rc1`) are published as
+pre-releases and never move `latest`.
+
 ## AI disclosure
 
 This is a vibe-coded project: the codebase was co-authored with **Claude** (Anthropic's AI),
