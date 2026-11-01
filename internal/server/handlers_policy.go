@@ -157,6 +157,10 @@ func modelSummary(in *policy.ModelInput) string {
 			disabled++
 		}
 	}
-	return fmt.Sprintf("%d rules (%d disabled), %d groups, %d tagOwners, %d hosts",
+	summary := fmt.Sprintf("%d rules (%d disabled), %d groups, %d tagOwners, %d hosts",
 		enabled+disabled, disabled, len(in.Groups), len(in.TagOwners), len(in.Hosts))
+	if in.Grants != nil || in.SSH != nil || in.NodeAttrs != nil {
+		summary += fmt.Sprintf(", %d grants, %d ssh, %d nodeAttrs", len(in.Grants), len(in.SSH), len(in.NodeAttrs))
+	}
+	return summary
 }

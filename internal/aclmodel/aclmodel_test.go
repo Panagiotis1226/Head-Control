@@ -1,6 +1,7 @@
 package aclmodel
 
 import (
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -79,8 +80,8 @@ func TestParseDocument(t *testing.T) {
 	if len(d.Model.Groups) != 2 || len(d.Model.ACLs) != 3 || d.Model.Hosts["db1"] != "10.0.0.5/32" {
 		t.Fatalf("unexpected model: %+v", d.Model)
 	}
-	if len(d.Other) != 1 || d.Other[0] != "ssh" {
-		t.Fatalf("other sections: %v", d.Other)
+	if len(d.Other) != 0 || !d.Model.HasList["ssh"] || len(d.Model.Lists["ssh"]) != 1 {
+		t.Fatalf("ssh should be an editable list section: other=%v lists=%v", d.Other, d.Model.Lists)
 	}
 	if d.Model.ACLs[1].Proto != "tcp" || d.Model.ACLs[0].Proto != "" {
 		t.Fatalf("proto decode wrong: %+v", d.Model.ACLs)
@@ -414,5 +415,225 @@ func TestMixedCaseSectionKeys(t *testing.T) {
 	var ue *UnsupportedError
 	if !errors.As(err, &ue) || ue.Path != "acls" {
 		t.Fatalf("expected duplicate-section error, got %v", err)
+	}
+}
+
+// ---- all policy sections ----
+
+const fullFixture = `// full policy
+{
+  "ACLs": [
+    {"Action": "accept", "src": ["*"], "dst": ["*:*"]},
+  ],
+  "nodeAttrs": [
+    // taildrive everywhere
+    { "target": ["*"], "attr": ["drive:share", "drive:access"] },
+  ],
+  "grants": [
+    {
+      "src": ["*"],
+      "dst": ["*"],
+      "app": {
+        "tailscale.com/cap/drive": [{ "shares": ["*"], "access": "rw" }],
+      },
+    },
+  ],
+  "ssh": [
+    {"action": "check", "checkPeriod": "12h", "src": ["autogroup:member"], "dst": ["autogroup:self"], "users": ["autogroup:nonroot"]},
+  ],
+  "autoApprovers": {
+    "routes": {
+      // lab subnet
+      "10.0.0.0/24": ["tag:router"],
+    },
+    "exitNode": ["tag:exit"],
+  },
+  "tests": [
+    {"src": "alice@", "accept": ["tag:web:443"]},
+  ],
+}
+`
+
+func TestParseAllSections(t *testing.T) {
+	d := mustParse(t, fullFixture)
+	if len(d.Other) != 0 {
+		t.Fatalf("every section should be editable, other=%v", d.Other)
+	}
+	m := d.Model
+	if len(m.Lists["nodeAttrs"]) != 1 || len(m.Lists["grants"]) != 1 || len(m.Lists["ssh"]) != 1 || len(m.Lists["tests"]) != 1 || m.HasList["sshTests"] {
+		t.Fatalf("lists wrong: %+v", m.Lists)
+	}
+	if m.Lists["nodeAttrs"][0] != `{"attr":["drive:share","drive:access"],"target":["*"]}` {
+		t.Fatalf("canonical form wrong: %s", m.Lists["nodeAttrs"][0])
+	}
+	if !m.HasAutoApprovers || !m.HasAARoutes || m.AutoApprovers.Routes["10.0.0.0/24"][0] != "tag:router" || m.AutoApprovers.ExitNode[0] != "tag:exit" {
+		t.Fatalf("autoApprovers wrong: %+v", m.AutoApprovers)
+	}
+	if m.RandomizeClientPort != nil {
+		t.Fatal("randomizeClientPort should be absent")
+	}
+}
+
+func fullInput(m Model) *Input {
+	in := inputFrom(m)
+	raw := func(xs []string) []json.RawMessage {
+		out := []json.RawMessage{}
+		for _, x := range xs {
+			out = append(out, json.RawMessage(x))
+		}
+		return out
+	}
+	in.Grants, in.SSH, in.NodeAttrs = raw(m.Lists["grants"]), raw(m.Lists["ssh"]), raw(m.Lists["nodeAttrs"])
+	in.Tests, in.SSHTests = raw(m.Lists["tests"]), raw(m.Lists["sshTests"])
+	aa := m.AutoApprovers
+	routes := map[string][]string{}
+	for k, v := range aa.Routes {
+		routes[k] = v
+	}
+	in.AutoApprovers = &AutoApprovers{Routes: routes, ExitNode: append([]string{}, aa.ExitNode...)}
+	f := m.RandomizeClientPort != nil && *m.RandomizeClientPort
+	in.RandomizeClientPort = &f
+	return in
+}
+
+func TestAllSectionsNoOp(t *testing.T) {
+	d := mustParse(t, fullFixture)
+	p, err := d.Plan(fullInput(d.Model))
+	if err != nil || p.Ops != 0 {
+		t.Fatalf("expected no ops, got %d (%v): %s", p.Ops, err, p.bytes)
+	}
+	// Key order and whitespace inside a submitted element do not matter.
+	in := fullInput(d.Model)
+	in.NodeAttrs = []json.RawMessage{json.RawMessage(`{ "target": ["*"], "attr": ["drive:share", "drive:access"] }`)}
+	if p, _ := d.Plan(in); p.Ops != 0 {
+		t.Fatalf("reordered keys should be identical, got %s", p.bytes)
+	}
+}
+
+func TestEditAllSections(t *testing.T) {
+	d := mustParse(t, fullFixture)
+	in := fullInput(d.Model)
+	// nodeAttrs: add one; grants: unchanged; ssh: edit; tests: remove all;
+	// sshTests: add (section absent); autoApprovers: add a route, change exit;
+	// randomizeClientPort: add.
+	in.NodeAttrs = append(in.NodeAttrs, json.RawMessage(`{"target":["tag:dns"],"attr":["magicdns-aaaa"]}`))
+	in.SSH = []json.RawMessage{json.RawMessage(`{"action":"accept","src":["group:admins"],"dst":["tag:server"],"users":["root"]}`)}
+	in.Tests = []json.RawMessage{}
+	in.SSHTests = []json.RawMessage{json.RawMessage(`{"src":"alice@","dst":["tag:server"],"accept":["root"]}`)}
+	in.AutoApprovers.Routes["192.168.1.0/24"] = []string{"group:admins"}
+	in.AutoApprovers.ExitNode = []string{"tag:exit", "tag:exit2"}
+	tr := true
+	in.RandomizeClientPort = &tr
+
+	out, nd := roundTrip(t, fullFixture, in)
+	for _, want := range []string{
+		"// full policy", "// taildrive everywhere", "// lab subnet",
+		`{"target": ["tag:dns"], "attr": ["magicdns-aaaa"]}`,
+		`{"action": "accept", "src": ["group:admins"], "dst": ["tag:server"], "users": ["root"]}`,
+		`"192.168.1.0/24": ["group:admins"]`,
+		`"exitNode": ["tag:exit", "tag:exit2"]`,
+		`"randomizeClientPort": true`,
+		`"tailscale.com/cap/drive"`, // grant untouched
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("missing %q in:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "12h") || len(nd.Model.Lists["tests"]) != 0 || !nd.Model.HasList["tests"] {
+		t.Fatalf("ssh not replaced or tests not emptied:\n%s", out)
+	}
+	// Inserted lines are indented like their siblings and keep the
+	// container's trailing-comma style, including nested routes.
+	for _, line := range []string{
+		"\n    {\"target\": [\"tag:dns\"], \"attr\": [\"magicdns-aaaa\"]},\n",
+		"\n      \"192.168.1.0/24\": [\"group:admins\"],\n",
+	} {
+		if !strings.Contains(out, line) {
+			t.Fatalf("expected line %q in:\n%s", line, out)
+		}
+	}
+
+	// Turning randomizeClientPort off removes the key.
+	in2 := fullInput(nd.Model)
+	f := false
+	in2.RandomizeClientPort = &f
+	out2, _ := roundTrip(t, out, in2)
+	if strings.Contains(out2, "randomizeClientPort") {
+		t.Fatalf("randomizeClientPort should be removed:\n%s", out2)
+	}
+}
+
+func TestAutoApproversFromScratch(t *testing.T) {
+	raw := `{
+  "acls": [],
+}
+`
+	d := mustParse(t, raw)
+	in := fullInput(d.Model)
+	in.AutoApprovers = &AutoApprovers{Routes: map[string][]string{"10.0.0.0/8": {"tag:router"}}, ExitNode: []string{"tag:exit"}}
+	out, nd := roundTrip(t, raw, in)
+	want := `  "autoApprovers": {
+    "routes": {
+      "10.0.0.0/8": ["tag:router"]
+    },
+    "exitNode": ["tag:exit"]
+  }`
+	if !strings.Contains(out, want) || !nd.Model.HasAARoutes {
+		t.Fatalf("layout wrong:\n%s", out)
+	}
+	// Adding a route to a document that has only exitNode creates "routes".
+	raw2 := `{"autoApprovers": {"exitNode": ["tag:exit"]}}`
+	d2 := mustParse(t, raw2)
+	in2 := fullInput(d2.Model)
+	in2.AutoApprovers.Routes = map[string][]string{"10.1.0.0/16": {"tag:r"}}
+	_, nd2 := roundTrip(t, raw2, in2)
+	if nd2.Model.AutoApprovers.Routes["10.1.0.0/16"][0] != "tag:r" {
+		t.Fatalf("routes not added: %+v", nd2.Model.AutoApprovers)
+	}
+}
+
+// Since v0.29.4 headscale ignores "#" members anywhere in the policy. The
+// editor must load such policies and leave the members untouched.
+func TestMetadataMembersPreserved(t *testing.T) {
+	raw := `{
+  "#owner": "ops team",
+  "groups": {
+    "#note": "managed by hand",
+    "group:eng": ["alice@"],
+  },
+  "acls": [
+    {"#name": "eng to all", "action": "accept", "src": ["group:eng"], "dst": ["*:*"]},
+  ],
+  "autoApprovers": {"#why": "lab", "exitNode": ["tag:exit"]},
+}
+`
+	d := mustParse(t, raw)
+	if len(d.Other) != 0 || len(d.Model.Groups) != 1 || len(d.Model.ACLs) != 1 || d.Model.AutoApprovers.ExitNode[0] != "tag:exit" {
+		t.Fatalf("metadata not skipped: other=%v model=%+v", d.Other, d.Model)
+	}
+	in := fullInput(d.Model)
+	in.Groups["group:ops"] = []string{"bob@"}
+	in.Rules = append(in.Rules, InputRule{Action: "accept", Src: []string{"group:ops"}, Dst: []string{"*:22"}, Enabled: true})
+	in.AutoApprovers.ExitNode = []string{"tag:exit", "tag:exit2"}
+	out, _ := roundTrip(t, raw, in)
+	for _, want := range []string{`"#owner": "ops team"`, `"#note": "managed by hand"`, `"#name": "eng to all"`, `"#why": "lab"`} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("lost %s:\n%s", want, out)
+		}
+	}
+}
+
+func TestListSectionValidation(t *testing.T) {
+	in := &Input{Grants: []json.RawMessage{json.RawMessage(`["not","an","object"]`)}}
+	var ve *ValidationError
+	if err := Validate(in); !errors.As(err, &ve) || ve.Path != "grants[0]" {
+		t.Fatalf("expected grants[0] error, got %v", err)
+	}
+	in = &Input{AutoApprovers: &AutoApprovers{Routes: map[string][]string{"10.0.0.1": {"tag:r"}}}}
+	if err := Validate(in); !errors.As(err, &ve) || !strings.Contains(ve.Path, "autoApprovers.routes") {
+		t.Fatalf("expected route prefix error, got %v", err)
+	}
+	if _, err := ParseDocument(`{"autoApprovers": {"routes": {}, "Routes": {}}}`); err == nil {
+		t.Fatal("duplicate routes key should be unsupported")
 	}
 }

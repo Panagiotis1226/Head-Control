@@ -601,15 +601,18 @@ func (f *Fake) registerPending(w http.ResponseWriter, userName, authID string) {
 }
 
 // validatePolicy is a shallow stand-in for headscale's policy validation:
-// it must be valid HuJSON (comments and trailing commas are stripped like
-// headscale does) and must not contain the marker "INVALID" (lets tests
-// force failures with structurally valid JSON).
+// it must be valid HuJSON (comments, trailing commas and "#" metadata
+// members are stripped like headscale >= 0.29.4 does) and must not contain
+// the marker "INVALID" (lets tests force failures with valid JSON).
 func (f *Fake) validatePolicy(policy string) (string, bool) {
 	var v any
-	std, err := hujson.Standardize([]byte(policy))
+	ast, err := hujson.Parse([]byte(policy))
 	if err != nil {
 		return "parsing policy, syntax error: " + err.Error(), false
 	}
+	stripMetadataMembers(&ast)
+	ast.Standardize()
+	std := ast.Pack()
 	if err := json.Unmarshal(std, &v); err != nil {
 		return "parsing policy, syntax error: " + err.Error(), false
 	}
@@ -713,6 +716,28 @@ func duplicateMember(doc []byte) (string, bool) {
 		// A value (scalar or closed composite) finished: back to a key.
 		if len(stack) > 0 && stack[len(stack)-1].object {
 			stack[len(stack)-1].expectKey = true
+		}
+	}
+}
+
+// stripMetadataMembers mirrors headscale's own: object members whose name
+// starts with "#" are dropped before decoding, at every level.
+func stripMetadataMembers(v *hujson.Value) {
+	switch val := v.Value.(type) {
+	case *hujson.Object:
+		kept := val.Members[:0]
+		for i := range val.Members {
+			name, ok := val.Members[i].Name.Value.(hujson.Literal)
+			if ok && strings.HasPrefix(name.String(), "#") {
+				continue
+			}
+			stripMetadataMembers(&val.Members[i].Value)
+			kept = append(kept, val.Members[i])
+		}
+		val.Members = kept
+	case *hujson.Array:
+		for i := range val.Elements {
+			stripMetadataMembers(&val.Elements[i])
 		}
 	}
 }

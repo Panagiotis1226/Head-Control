@@ -1,6 +1,7 @@
 package aclmodel
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/netip"
 	"regexp"
@@ -24,13 +25,58 @@ func (r InputRule) Rule() Rule {
 	return Normalize(Rule{Action: r.Action, Proto: r.Proto, Src: r.Src, Dst: r.Dst})
 }
 
-// Input is the editor's submitted model. A nil map/slice means "leave this
-// section untouched"; an empty one means "make it empty".
+// Input is the editor's submitted model. A nil map/slice/pointer means
+// "leave this section untouched"; an empty one means "make it empty".
 type Input struct {
 	Groups    map[string][]string `json:"groups"`
 	TagOwners map[string][]string `json:"tagOwners"`
 	Hosts     map[string]string   `json:"hosts"`
 	Rules     []InputRule         `json:"rules"`
+
+	// List sections: each element is a JSON object, validated by headscale.
+	Grants    []json.RawMessage `json:"grants"`
+	SSH       []json.RawMessage `json:"ssh"`
+	NodeAttrs []json.RawMessage `json:"nodeAttrs"`
+	Tests     []json.RawMessage `json:"tests"`
+	SSHTests  []json.RawMessage `json:"sshTests"`
+
+	AutoApprovers       *AutoApprovers `json:"autoApprovers"`
+	RandomizeClientPort *bool          `json:"randomizeClientPort"`
+}
+
+// list returns the submitted elements of a list section (nil = untouched).
+func (in *Input) list(section string) []json.RawMessage {
+	switch section {
+	case "grants":
+		return in.Grants
+	case "ssh":
+		return in.SSH
+	case "nodeAttrs":
+		return in.NodeAttrs
+	case "tests":
+		return in.Tests
+	case "sshTests":
+		return in.SSHTests
+	}
+	return nil
+}
+
+// CanonicalList returns the canonical JSON of a list section's submitted
+// elements, or nil when the section was not submitted.
+func (in *Input) CanonicalList(section string) ([]string, error) {
+	items := in.list(section)
+	if items == nil {
+		return nil, nil
+	}
+	out := make([]string, len(items))
+	for i, item := range items {
+		c, err := Canonical(item)
+		if err != nil {
+			return nil, verr(fmt.Sprintf("%s[%d]", section, i), "must be a JSON object")
+		}
+		out[i] = c
+	}
+	return out, nil
 }
 
 // EnabledRules returns the rules that belong in the live policy, in order.
@@ -59,6 +105,7 @@ func verr(path, format string, args ...any) error {
 const (
 	MaxNameLen        = 120
 	MaxDescriptionLen = 2000
+	MaxElementBytes   = 64 << 10
 )
 
 var (
@@ -135,6 +182,30 @@ func Validate(in *Input) error {
 			}
 		}
 	}
+	for _, section := range ListSections {
+		for i, item := range in.list(section) {
+			if len(item) > MaxElementBytes {
+				return verr(fmt.Sprintf("%s[%d]", section, i), "is larger than %d KiB", MaxElementBytes>>10)
+			}
+		}
+		if _, err := in.CanonicalList(section); err != nil {
+			return err
+		}
+	}
+	if aa := in.AutoApprovers; aa != nil {
+		for prefix, owners := range aa.Routes {
+			p := "autoApprovers.routes[" + prefix + "]"
+			if _, err := netip.ParsePrefix(prefix); err != nil {
+				return verr(p, "%q is not a CIDR prefix such as 10.0.0.0/24", prefix)
+			}
+			if err := checkApprovers(p, owners); err != nil {
+				return err
+			}
+		}
+		if err := checkApprovers("autoApprovers.exitNode", aa.ExitNode); err != nil {
+			return err
+		}
+	}
 	for i, r := range in.Rules {
 		p := fmt.Sprintf("rules[%d]", i)
 		n := r.Rule()
@@ -171,6 +242,15 @@ func Validate(in *Input) error {
 		}
 		if len(r.Description) > MaxDescriptionLen {
 			return verr(p+".description", "at most %d characters", MaxDescriptionLen)
+		}
+	}
+	return nil
+}
+
+func checkApprovers(path string, owners []string) error {
+	for i, o := range owners {
+		if o == "" || strings.ContainsAny(o, " \t\r\n") {
+			return verr(fmt.Sprintf("%s[%d]", path, i), "approvers cannot be empty or contain whitespace")
 		}
 	}
 	return nil
