@@ -28,10 +28,14 @@ func randomToken() string {
 	return hex.EncodeToString(buf)
 }
 
-// CreateSession mints a session and returns the raw cookie token.
-func (s *Store) CreateSession(lifetime time.Duration) (token string, sess *Session, err error) {
+// CreateSession mints a session and returns the raw cookie token. maxAge is
+// the absolute cap on the session's life (0 = none).
+func (s *Store) CreateSession(lifetime, maxAge time.Duration) (token string, sess *Session, err error) {
 	token = randomToken()
 	csrf := randomToken()
+	if maxAge > 0 && lifetime > maxAge {
+		lifetime = maxAge
+	}
 	exp := time.Now().Add(lifetime)
 	_, err = s.db.Exec(
 		`INSERT INTO sessions (token_hash, csrf_token, created_at, expires_at, last_seen) VALUES (?, ?, ?, ?, ?)`,
@@ -44,23 +48,30 @@ func (s *Store) CreateSession(lifetime time.Duration) (token string, sess *Sessi
 }
 
 // GetSession resolves a cookie token to a live session, applying sliding
-// renewal: touching a session pushes its expiry forward by lifetime.
-func (s *Store) GetSession(token string, lifetime time.Duration) (*Session, error) {
+// renewal: touching a session pushes its expiry forward by lifetime, but
+// never past created_at + maxAge (0 = no cap). Without the cap a stolen
+// token could be kept alive indefinitely just by using it.
+func (s *Store) GetSession(token string, lifetime, maxAge time.Duration) (*Session, error) {
 	h := hashToken(token)
 	var csrf string
-	var expiresAt int64
-	err := s.db.QueryRow(`SELECT csrf_token, expires_at FROM sessions WHERE token_hash = ?`, h).Scan(&csrf, &expiresAt)
+	var createdAt, expiresAt int64
+	err := s.db.QueryRow(`SELECT csrf_token, created_at, expires_at FROM sessions WHERE token_hash = ?`, h).Scan(&csrf, &createdAt, &expiresAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, err
 	}
-	if time.Now().Unix() > expiresAt {
+	nowT := time.Now()
+	hardStop := time.Unix(createdAt, 0).Add(maxAge)
+	if nowT.Unix() > expiresAt || (maxAge > 0 && !nowT.Before(hardStop)) {
 		s.db.Exec(`DELETE FROM sessions WHERE token_hash = ?`, h)
 		return nil, nil
 	}
-	newExp := time.Now().Add(lifetime)
+	newExp := nowT.Add(lifetime)
+	if maxAge > 0 && newExp.After(hardStop) {
+		newExp = hardStop
+	}
 	s.db.Exec(`UPDATE sessions SET last_seen = ?, expires_at = ? WHERE token_hash = ?`, now(), newExp.Unix(), h)
 	return &Session{CSRFToken: csrf, ExpiresAt: newExp}, nil
 }

@@ -32,7 +32,8 @@ type Config struct {
 	BasePath        string // normalized: "" for root, else "/sub/path" (no trailing slash)
 	DataDir         string
 	CookieSecure    bool
-	SessionLifetime time.Duration
+	SessionLifetime time.Duration // sliding: renewed on every request
+	SessionMaxAge   time.Duration // absolute cap from login; 0 = none
 
 	PolicyMode       string // "auto" | "database" | "file"
 	PolicyFilePath   string
@@ -114,6 +115,9 @@ func FromEnv() (*Config, error) {
 		return nil, err
 	}
 	if c.SessionLifetime, err = envDuration("SESSION_LIFETIME", 12*time.Hour); err != nil {
+		return nil, err
+	}
+	if c.SessionMaxAge, err = envDuration("SESSION_MAX_AGE", 7*24*time.Hour); err != nil {
 		return nil, err
 	}
 	if c.HealthInterval, err = envDuration("HEALTH_INTERVAL", 30*time.Second); err != nil {

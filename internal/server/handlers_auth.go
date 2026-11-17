@@ -2,11 +2,17 @@ package server
 
 import (
 	"net/http"
+
+	"github.com/panagiotis1226/head-control/internal/store"
 )
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	ip := clientIP(r)
-	if !s.auth.AllowAttempt(ip) {
+	// The attempt takes its rate-limit slot before anything else happens, so
+	// parallel requests cannot all slip past the check together. Malformed
+	// bodies keep their slot too.
+	if !s.auth.BeginAttempt(ip) {
+		s.log.Warn("login attempt rate-limited", "ip", ip)
 		writeErr(w, http.StatusTooManyRequests, "rate_limited", "too many login attempts — wait a minute and try again")
 		return
 	}
@@ -17,16 +23,19 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !s.auth.VerifyPassword(req.Password) {
-		s.auth.RecordFailure(ip)
+		s.auth.AttemptFailed()
 		s.log.Info("failed login attempt", "ip", ip)
 		writeErr(w, http.StatusUnauthorized, "bad_credentials", "incorrect password")
 		return
 	}
+	s.auth.AttemptSucceeded(ip)
 	csrf, err := s.auth.StartSession(w, s.cfg.BasePath)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "internal", "could not create session")
 		return
 	}
+	s.log.Info("login", "ip", ip)
+	s.audit(store.AuditEntry{Action: "auth.login", Summary: "from " + ip})
 	writeJSON(w, http.StatusOK, map[string]any{"csrfToken": csrf})
 }
 

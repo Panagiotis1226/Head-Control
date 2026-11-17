@@ -53,11 +53,20 @@ func New(cfg *config.Config, log *slog.Logger, hs *hsclient.Client, st *store.St
 		log:    log,
 		hs:     hs,
 		st:     st,
-		auth:   auth.New(st, cfg.AdminPassword, cfg.AdminPasswordHash, cfg.SessionLifetime, cfg.CookieSecure),
+		auth:   auth.New(st, cfg.AdminPassword, cfg.AdminPasswordHash, cfg.SessionLifetime, cfg.SessionMaxAge, cfg.CookieSecure),
 		policy: policy.New(hs, st, log, cfg.PolicyMode, cfg.PolicyFilePath, reloader),
 		dns:    dnsrecords.New(cfg.ExtraRecordsPath, st),
 		docker: docker,
 		health: newHealthMonitor(hs, log),
+	}
+	// Sessions persist in SQLite across restarts; rotating the admin password
+	// must still sign everyone out.
+	revoked, err := s.auth.RevokeSessionsIfCredentialChanged()
+	if err != nil {
+		log.Warn("could not record the admin credential fingerprint; sessions will be revoked again on the next start", "err", err)
+	}
+	if revoked {
+		log.Info("admin password is new or changed since the last start — all existing sessions were signed out")
 	}
 	return s
 }

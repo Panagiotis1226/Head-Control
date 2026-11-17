@@ -125,6 +125,7 @@ misconfiguration fails loudly with an explanation, not silently.
 | `DATA_DIR` | | `/data` | SQLite (sessions, audit log, policy history) |
 | `COOKIE_SECURE` | | `true` | Set `false` only for plain-HTTP LAN use |
 | `SESSION_LIFETIME` | | `12h` | Login session lifetime (sliding) |
+| `SESSION_MAX_AGE` | | `168h` | Hard cap on one session's total life, however active it is |
 | `POLICY_MODE` | | `auto` | `auto` \| `database` \| `file` |
 | `POLICY_FILE_PATH` | | — | Mount headscale's policy file to enable file-mode ACL editing |
 | `EXTRA_RECORDS_PATH` | | — | Mount headscale's `dns.extra_records_path` JSON to edit DNS records (hot-reloaded) |

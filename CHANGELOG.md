@@ -6,6 +6,19 @@ All notable changes to Head-Control are documented here. The format follows
 
 ## [Unreleased]
 
+### Security
+- Login rate limiting can no longer be outrun by sending guesses in parallel: each attempt takes
+  its slot before the password is checked.
+- The global login limit no longer lets anyone lock every admin out with 20 bad guesses a minute:
+  IPs that logged in successfully in the last 30 days are exempt from it (the per-IP limit still
+  applies to them).
+- Changing the admin password now signs out every existing session at the next start. Sessions
+  are kept in SQLite and previously survived both restarts and password changes. The first start
+  on this version signs everyone out once.
+- Sessions have a hard lifetime cap (`SESSION_MAX_AGE`, default 7 days) on top of the sliding
+  `SESSION_LIFETIME`.
+- Successful logins are recorded in the audit log with the client IP.
+
 ### Changed
 - Releases publish themselves: merging a new `CHANGELOG.md` version to `main` builds the image,
   tags the commit and creates the GitHub Release. Pushing a `v*` tag by hand still works.
